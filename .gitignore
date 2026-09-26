@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Secrets (LTA DataMall key lives here)
+.env
+
+# Large downloads and derived build artefacts (recreated by `python -m isochrone build`)
+data/cache/
+data/build/
+
+# OS / editor
+Thumbs.db
+.DS_Store
