@@ -1,23 +1,9 @@
 "use strict";
 
-/* ---------------------------------------------------------------------------
- * Colour: one-hue sequential blue (dataviz reference ramp, steps 100-700).
- * The encoded quantity is how quickly a place is reached: the start point is
- * the strong end and colour fades toward the basemap as travel time grows, so
- * the shading dissolves at the cut-off instead of ending on its strongest
- * colour. Light theme: quick = dark, slow = light; the dark theme flips the
- * anchor so the slow end recedes toward the dark basemap. Band mode uses five
- * steps that pass the ordinal checks (monotone lightness, visible gaps).
- * ------------------------------------------------------------------------- */
-const BLUE = {
-  100: "#cde2fb", 150: "#b7d3f6", 200: "#9ec5f4", 250: "#86b6ef", 300: "#6da7ec", 350: "#5598e7",
-  400: "#3987e5", 450: "#2a78d6", 500: "#256abf", 550: "#1c5cab", 600: "#184f95", 650: "#104281", 700: "#0d366b",
-};
-const LIGHT_TO_DARK = [100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700];
-// ramps ordered from 0 minutes to the cut-off
-const SMOOTH_STEPS = { light: [...LIGHT_TO_DARK].reverse(), dark: LIGHT_TO_DARK };
-const BAND_STEPS = { light: [700, 550, 450, 350, 250], dark: [100, 200, 300, 450, 600] };
-const BAND_COUNT = 5;
+// Colour schemes and ramp sampling live in palettes.js (loaded first).
+// "Colour up to" sets where colouring stops in both styles; band width only sets
+// the step, so the last band is narrower when the cut-off isn't a multiple of it.
+const BAND_WIDTHS = [5, 10, 15, 20, 30];
 
 const ONEMAP_ATTR = '<img src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" alt="" style="height:16px;width:16px;"/> ' +
   '<a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener noreferrer">OneMap</a> &copy; contributors | ' +
@@ -46,7 +32,7 @@ const state = {
   origin: null, dest: null,
   mode: "transit", band: "am_peak", wait: "avg", walk: 4.8, res: "med",
   bus: true, rail: true, voiddeck: true, parking: 0,
-  style: "smooth", maxMin: 90, bandSize: 10, opacity: 0.7,
+  style: "smooth", maxMin: 90, bandSize: 15, palette: "blues", reverse: false, opacity: 0.7,
   ovMrt: true, ovBus: false, ovStops: false,
   theme: "auto", basemap: "onemap",
   view: null,  // [lat, lon, zoom] restored from the URL
@@ -60,7 +46,6 @@ const loadedOverlays = new Set();
 
 /* --- utilities -------------------------------------------------------------- */
 
-const hexRgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const isDark = () => state.theme === "dark" || (state.theme === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
 const fmtMin = (m) => (m < 10 ? m.toFixed(1) : Math.round(m).toString());
@@ -89,6 +74,8 @@ function writeHash() {
   p.set("walk", state.walk); p.set("res", state.res); p.set("park", state.parking);
   p.set("use", (state.bus ? "b" : "") + (state.rail ? "r" : "") + (state.voiddeck ? "v" : ""));
   p.set("style", state.style); p.set("max", state.maxMin); p.set("bw", state.bandSize);
+  p.set("pal", state.palette);
+  if (state.reverse) p.set("rev", "1");
   p.set("ov", (state.ovMrt ? "m" : "") + (state.ovBus ? "b" : "") + (state.ovStops ? "s" : ""));
   if (map) {
     const c = map.getCenter();
@@ -110,11 +97,13 @@ function readHash() {
   state.wait = pick("wait", meta.wait_modes) || state.wait;
   state.res = pick("res", meta.resolutions.map((r) => r.key)) || state.res;
   state.style = pick("style", ["smooth", "bands"]) || state.style;
+  state.palette = pick("pal", PALETTES.map((q) => q.key)) || state.palette;
+  state.reverse = p.get("rev") === "1";
   const num = (k, lo, hi, dflt) => { const v = Number(p.get(k)); return p.has(k) && v >= lo && v <= hi ? v : dflt; };
   state.walk = num("walk", meta.walk_kmh.min, meta.walk_kmh.max, meta.walk_kmh.default);
   state.parking = meta.parking_min.includes(num("park", 0, 30, -1)) ? num("park", 0, 30, 0) : 0;
   state.maxMin = num("max", 30, 150, state.maxMin);
-  state.bandSize = [5, 10, 15, 20].includes(num("bw", 5, 20, -1)) ? num("bw", 5, 20, 10) : state.bandSize;
+  state.bandSize = BAND_WIDTHS.includes(num("bw", 5, 30, -1)) ? num("bw", 5, 30, -1) : state.bandSize;
   if (p.has("use")) { const u = p.get("use"); state.bus = u.includes("b"); state.rail = u.includes("r"); state.voiddeck = u.includes("v"); }
   if (p.has("ov")) { const o = p.get("ov"); state.ovMrt = o.includes("m"); state.ovBus = o.includes("b"); state.ovStops = o.includes("s"); }
   try {
@@ -141,7 +130,13 @@ function buildControls() {
   const resLabel = { low: "Low", med: "Medium", high: "High" };
   for (const r of meta.resolutions) res.append(segOption("res", r.key, resLabel[r.key] || r.key, `${r.res_m} m grid`));
   const bw = $("#bandsize-group");
-  for (const m of [5, 10, 15, 20]) bw.append(segOption("bandSize", String(m), `${m} min`));
+  for (const m of BAND_WIDTHS) bw.append(segOption("bandSize", String(m), String(m)));
+  const palettes = $("#palette-group");
+  for (const q of PALETTES) {
+    const input = el("input", { type: "radio", name: "palette", value: q.key });
+    input.setAttribute("aria-label", q.name);
+    palettes.append(el("label", { title: q.name }, input, el("span", { className: "ramp" })));
+  }
 
   const walk = $("#walk");
   walk.min = meta.walk_kmh.min; walk.max = meta.walk_kmh.max;
@@ -161,26 +156,30 @@ function buildControls() {
   const check = (name, value) => { const i = document.querySelector(`input[name="${name}"][value="${value}"]`); if (i) i.checked = true; };
   check("mode", state.mode); check("band", state.band); check("wait", state.wait); check("res", state.res);
   check("parking", String(state.parking)); check("style", state.style); check("bandSize", String(state.bandSize));
+  check("palette", state.palette);
   walk.value = state.walk;
   $("#max-min").value = state.maxMin;
+  $("#palette-rev").checked = state.reverse;
   $("#opacity").value = state.opacity;
   $("#use-bus").checked = state.bus; $("#use-rail").checked = state.rail; $("#use-voiddeck").checked = state.voiddeck;
   $("#ov-mrt").checked = state.ovMrt; $("#ov-bus").checked = state.ovBus; $("#ov-stops").checked = state.ovStops;
   $("#theme").value = state.theme;
   syncControlVisibility();
+  paintPaletteSwatches();
 
   // events
   const recompute = () => { writeHash(); compute(); };
   const recomputeSlow = debounce(recompute, 250);
+  const redraw = () => { writeHash(); render(); renderLegend(); };
   document.querySelectorAll('input[type="radio"]').forEach((input) => input.addEventListener("change", () => {
     const { name, value } = input;
     if (name === "parking" || name === "bandSize") state[name] = Number(value); else state[name] = value;
     syncControlVisibility();
-    if (["style", "bandSize"].includes(name)) { writeHash(); render(); renderLegend(); updateTables(); }
-    else recompute();
+    if (["style", "bandSize", "palette"].includes(name)) redraw(); else recompute();
   }));
   walk.addEventListener("input", () => { state.walk = Number(walk.value); updateWalkOut(); recomputeSlow(); });
-  $("#max-min").addEventListener("input", (e) => { state.maxMin = Number(e.target.value); updateMaxOut(); writeHash(); render(); renderLegend(); });
+  $("#max-min").addEventListener("input", (e) => { state.maxMin = Number(e.target.value); updateMaxOut(); updateBandNote(); redraw(); });
+  $("#palette-rev").addEventListener("change", (e) => { state.reverse = e.target.checked; paintPaletteSwatches(); redraw(); });
   $("#opacity").addEventListener("input", (e) => { state.opacity = Number(e.target.value); applyHeatOpacity(); });
   for (const [id, key] of [["#use-bus", "bus"], ["#use-rail", "rail"], ["#use-voiddeck", "voiddeck"]]) {
     $(id).addEventListener("change", (e) => { state[key] = e.target.checked; recompute(); });
@@ -217,8 +216,12 @@ function syncControlVisibility() {
   const transit = state.mode === "transit";
   document.querySelectorAll(".transit-only").forEach((n) => (n.hidden = !transit));
   document.querySelectorAll(".car-only").forEach((n) => (n.hidden = transit));
-  $("#max-row").hidden = state.style !== "smooth";
   $("#bandsize-row").hidden = state.style !== "bands";
+  $("#band-note").hidden = state.style !== "bands";
+  updateBandNote();
+  const palette = PALETTES.find((q) => q.key === state.palette);
+  $("#palette-name").textContent = palette.name;
+  $("#palette-note").hidden = !palette.cvdWarning;
   const notes = {
     best: "No waiting at all: every bus and train arrives as you reach the stop.",
     avg: "Expected wait for someone who turns up at a random time.",
@@ -229,6 +232,22 @@ function syncControlVisibility() {
 
 const updateWalkOut = () => { $("#walk-out").textContent = `${state.walk.toFixed(1)} km/h`; };
 const updateMaxOut = () => { $("#max-out").textContent = `${state.maxMin} min`; };
+
+function updateBandNote() {
+  const edges = bandEdges(), n = edges.length - 1, last = edges[n] - edges[n - 1];
+  let text = last === state.bandSize
+    ? `${n} band${n === 1 ? "" : "s"} of ${state.bandSize} min, up to ${state.maxMin} min.`
+    : `${n} bands up to ${state.maxMin} min; the last covers ${edges[n - 1]}–${state.maxMin}.`;
+  if (n > 8) text += " With this many, neighbouring bands are hard to tell apart; hover for exact times.";
+  $("#band-note").textContent = text;
+}
+
+function paintPaletteSwatches() {
+  document.querySelectorAll('#palette-group input[name="palette"]').forEach((input) => {
+    const stops = rampStops(input.value, isDark(), state.reverse).map(rgbCss);
+    input.nextElementSibling.style.background = `linear-gradient(to right, ${stops.join(", ")})`;
+  });
+}
 
 /* --- map -------------------------------------------------------------------- */
 
@@ -343,6 +362,7 @@ function applyTheme() {
   const dark = isDark();
   document.documentElement.toggleAttribute("data-theme", state.theme !== "auto");
   if (state.theme !== "auto") document.documentElement.setAttribute("data-theme", state.theme);
+  paintPaletteSwatches();  // one-way ramps start from the other end in the dark theme
   if (!map || !map.getLayer("heat")) return;
   map.getSource("onemap").setTiles(onemapTiles());
   map.getSource("esri-base").setTiles(esriBaseTiles());
@@ -461,27 +481,28 @@ function decodeGrid(g) {
   return { ...g, values: new Uint16Array(bytes.buffer), data: undefined };
 }
 
-function capMinutes() { return state.style === "smooth" ? state.maxMin : state.bandSize * BAND_COUNT; }
+const currentRamp = () => rampStops(state.palette, isDark(), state.reverse);
 
-function colourFor(minutes, cap) {
-  const theme = isDark() ? "dark" : "light";
-  if (state.style === "bands") {
-    const steps = BAND_STEPS[theme];
-    return hexRgb(BLUE[steps[Math.min(BAND_COUNT - 1, Math.floor(minutes / state.bandSize))]]);
-  }
-  const steps = SMOOTH_STEPS[theme].map((s) => hexRgb(BLUE[s]));
-  const x = Math.min(1, Math.max(0, minutes / cap)) * (steps.length - 1);
-  const i = Math.min(Math.floor(x), steps.length - 2), t = x - i;
-  return steps[i].map((c, k) => Math.round(c + (steps[i + 1][k] - c) * t));
+/** Band boundaries in minutes: 0, width, 2 x width, ... and the cut-off. */
+function bandEdges() {
+  const edges = [];
+  for (let m = 0; m < state.maxMin; m += state.bandSize) edges.push(m);
+  return [...edges, state.maxMin];
 }
+
+const currentBandColours = () => bandColours(currentRamp(), bandEdges().length - 1, hexRgb(cssVar("--surface")));
 
 function render() {
   if (!grid || !map || !map.getSource("heat")) return;
-  const cap = capMinutes();
-  const lut = new Uint32Array(cap * 10 + 1);
-  for (let v = 0; v < lut.length; v++) {
-    const [r, g, b] = colourFor(v / 10, cap);
-    lut[v] = ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+  // lookup table from tenths of a minute to an RGBA pixel
+  const cap = state.maxMin, lut = new Uint32Array(cap * 10 + 1);
+  const pack = ([r, g, b]) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+  if (state.style === "bands") {
+    const colours = currentBandColours().map(pack), step = state.bandSize * 10;
+    for (let v = 0; v < lut.length; v++) lut[v] = colours[Math.min(colours.length - 1, Math.floor(v / step))];
+  } else {
+    const stops = currentRamp();
+    for (let v = 0; v < lut.length; v++) lut[v] = pack(sampleRamp(stops, v / (cap * 10)));
   }
   const canvas = $("#heat-canvas");
   canvas.width = grid.nx; canvas.height = grid.ny;
@@ -509,21 +530,24 @@ function addTick(axis, label, frac) {
 function renderLegend() {
   const box = $("#legend");
   box.replaceChildren();
-  const cap = capMinutes();
+  const cap = state.maxMin;
+  const axis = el("div", { className: "axis" });
   if (state.style === "smooth") {
-    const steps = SMOOTH_STEPS[isDark() ? "dark" : "light"];
     const bar = el("div", { className: "bar" });
-    bar.style.background = `linear-gradient(to right, ${steps.map((s, i) => `${BLUE[s]} ${(i / (steps.length - 1)) * 100}%`).join(", ")})`;
-    const axis = el("div", { className: "axis" });
+    bar.style.background = `linear-gradient(to right, ${currentRamp().map(rgbCss).join(", ")})`;
     const step = cap <= 45 ? 10 : cap <= 100 ? 15 : 30;
     for (let m = 0; m <= cap; m += step) addTick(axis, `${m}`, m / cap);
     box.append(bar, axis);
   } else {
-    const steps = BAND_STEPS[isDark() ? "dark" : "light"];
-    const sw = el("div", { className: "swatches" });
-    for (const s of steps) { const d = el("div"); d.style.background = BLUE[s]; sw.append(d); }
-    const axis = el("div", { className: "axis" });
-    for (let i = 0; i <= BAND_COUNT; i++) addTick(axis, `${i * state.bandSize}`, i / BAND_COUNT);
+    // swatch widths follow the minutes each band covers, so a short last band looks short
+    const edges = bandEdges(), sw = el("div", { className: "swatches" });
+    sw.style.gridTemplateColumns = edges.slice(1).map((m, i) => `${m - edges[i]}fr`).join(" ");
+    for (const c of currentBandColours()) { const d = el("div"); d.style.background = rgbCss(c); sw.append(d); }
+    // label every band edge while they fit, then every 2nd, 3rd...; the cut-off is always labelled
+    const every = Math.ceil((0.1 * cap) / state.bandSize);
+    edges.forEach((m, i) => {
+      if (m === cap || (i % every === 0 && cap - m >= 0.08 * cap)) addTick(axis, `${m}`, m / cap);
+    });
     box.append(sw, axis);
   }
   box.append(el("div", { className: "caption" }, "Minutes from the start · ", el("span", { className: "nodata" }),

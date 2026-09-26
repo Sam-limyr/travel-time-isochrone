@@ -73,15 +73,23 @@
           <label><input type="radio" name="style" value="smooth" checked><span>Smooth</span></label>
           <label><input type="radio" name="style" value="bands"><span>Bands</span></label>
         </div>
-        <div class="row" id="max-row">
+        <div class="row">
           <label for="max-min">Colour up to</label>
           <input type="range" id="max-min" min="30" max="150" step="5">
           <output id="max-out" for="max-min"></output>
         </div>
         <div class="row" id="bandsize-row" hidden>
           <span>Band width</span>
-          <div class="seg seg-4 mini" role="radiogroup" aria-label="Band width in minutes" id="bandsize-group" data-name="bandSize"></div>
+          <div class="seg mini" role="radiogroup" aria-label="Band width in minutes" id="bandsize-group" data-name="bandSize"></div>
+          <span class="unit">min</span>
         </div>
+        <p class="note" id="band-note" hidden></p>
+        <div class="palette-head">
+          <span>Colours <b id="palette-name"></b></span>
+          <label title="Swap which end of the scale the start point gets"><input type="checkbox" id="palette-rev"> Reverse</label>
+        </div>
+        <div class="palettes" role="radiogroup" aria-label="Colour scheme" id="palette-group"></div>
+        <p class="note" id="palette-note" hidden>Red and green look alike to many colour-blind people. The other schemes don't rely on telling them apart.</p>
         <div class="row">
           <label for="opacity">Opacity</label>
           <input type="range" id="opacity" min="0.2" max="1" step="0.05">
@@ -152,6 +160,7 @@
   <canvas id="heat-canvas" hidden></canvas>
 
   <script src="vendor/maplibre-gl/maplibre-gl.js"></script>
+  <script src="palettes.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
