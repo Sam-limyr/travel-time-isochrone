@@ -32,9 +32,20 @@ poetry run isochrone build               # networks -> data/build (gitignored)
 poetry run isochrone serve --open        # http://127.0.0.1:8000
 ```
 
-If Poetry picks an unsupported interpreter (for example macOS's built-in `python3`, which
-is 3.9), point it at a newer one once with `poetry env use python3.13`. The map background
-loads tiles from OneMap (or Esri) over the internet; all routing is computed locally.
+The map background loads tiles from OneMap (or Esri) over the internet; all routing is
+computed locally. Resources needed: about 600 MB of disk (environment plus data), and
+about 0.5 GB of RAM while building (the server uses about 0.25 GB).
+
+### Troubleshooting
+
+- **Poetry uses the wrong Python** (e.g. macOS's built-in `python3`, which is 3.9): run
+  `poetry env use python3.13` (or `py -3.12` on Windows) once, then `poetry install`.
+- **Windows: `DLL load failed … The filename or extension is too long`**: the project
+  sits in a folder whose path is too long for Windows' 260-character limit once `.venv`
+  is added. Move it to a shorter path, or enable Windows long-path support.
+- **Port already in use**: start on another port (`run.ps1 -Port 8080`, `./run.sh --port 8080`,
+  or `poetry run isochrone serve --port 8080`).
+- **Start again from scratch**: delete `.venv` and `data/build`, then run the launcher again.
 
 ## Using the app
 
