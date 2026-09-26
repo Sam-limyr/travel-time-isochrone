@@ -1,11 +1,17 @@
-"""Command line entry point: ``python -m isochrone {fetch,build,serve}``."""
+"""Command line entry point: ``isochrone {fetch,build,serve}`` (or ``python -m isochrone ...``)."""
 from __future__ import annotations
 
 import argparse
+import sys
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="python -m isochrone", description=__doc__)
+    # Windows consoles default to a legacy code page; never crash on a stray non-ASCII name.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
+
+    parser = argparse.ArgumentParser(prog="isochrone", description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_fetch = sub.add_parser("fetch", help="download raw datasets")

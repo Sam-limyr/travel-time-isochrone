@@ -321,7 +321,7 @@ class Engine:
         return {
             "grid": {"nx": g["nx"], "ny": g["ny"], "res_m": g["res_m"], "bounds": g["bounds"],
                      "encoding": "uint16 little-endian, tenths of a minute; 65535 = no data, 65534 = unreachable",
-                     "data": base64.b64encode(grid.tobytes()).decode("ascii")},
+                     "data": base64.b64encode(grid.astype("<u2").tobytes()).decode("ascii")},
             "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
             "area_km2": {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)},
             "timing_ms": {"search": round((t1 - t0) * 1000), "grid": round((t2 - t1) * 1000),

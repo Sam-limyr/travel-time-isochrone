@@ -1,0 +1,4 @@
+# Keep the virtual environment inside the project (.venv/) on every OS,
+# so the launch scripts and editors find it in the same place.
+[virtualenvs]
+in-project = true

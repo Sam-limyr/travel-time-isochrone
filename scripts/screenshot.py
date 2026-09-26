@@ -2,7 +2,7 @@
 
 Usage: python scripts/screenshot.py URL OUT.png [--dark] [--width 1440 --height 900] [--eval JS]
 
-Drives headless Microsoft Edge (or Chrome) over the DevTools protocol and waits
+Drives headless Edge, Chrome or Chromium (Windows, macOS or Linux) over the DevTools protocol and waits
 until MapLibre reports that all tiles and sources are loaded and no request is
 in flight, which a plain ``--screenshot`` run cannot do. Needs websocket-client.
 """
@@ -22,7 +22,11 @@ BROWSERS = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ]
+BROWSER_COMMANDS = ["msedge", "google-chrome", "chromium", "chromium-browser", "chrome"]
 
 
 def main() -> None:
@@ -36,7 +40,10 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=9333)
     args = ap.parse_args()
 
-    browser = next((b for b in BROWSERS if os.path.exists(b)), None) or shutil.which("msedge")
+    browser = next((b for b in BROWSERS if os.path.exists(b)), None) or next(
+        (shutil.which(c) for c in BROWSER_COMMANDS if shutil.which(c)), None)
+    if not browser:
+        raise SystemExit("No Chromium-based browser found (Edge, Chrome or Chromium).")
     profile = tempfile.mkdtemp(prefix="isochrone-shot-")
     proc = subprocess.Popen([
         browser, "--headless=new", f"--remote-debugging-port={args.port}", f"--user-data-dir={profile}",

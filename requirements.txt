@@ -1,7 +1,0 @@
-numpy>=2.0
-scipy>=1.13
-shapely>=2.0
-osmium>=4.0
-requests>=2.31
-fastapi>=0.110
-uvicorn>=0.29

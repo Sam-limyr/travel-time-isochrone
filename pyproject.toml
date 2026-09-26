@@ -1,0 +1,33 @@
+[project]
+name = "travel-time-isochrone"
+version = "0.1.0"
+description = "Travel-time isochrone heatmaps for Singapore: walk + bus + MRT/LRT, or car."
+readme = "README.md"
+# numpy/scipy need 3.12+; shapely and osmium publish wheels up to 3.14
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "numpy (>=2.2,<3.0)",
+    "scipy (>=1.14,<2.0)",
+    "shapely (>=2.0,<3.0)",
+    "osmium (>=4.0,<5.0)",
+    "requests (>=2.31,<3.0)",
+    "fastapi (>=0.110,<1.0)",
+    "uvicorn (>=0.29,<1.0)",
+]
+
+[project.scripts]
+isochrone = "isochrone.__main__:main"
+
+[tool.poetry]
+packages = [{ include = "isochrone" }]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+websocket-client = ">=1.7"  # scripts/screenshot.py
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

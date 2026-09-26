@@ -6,36 +6,43 @@ car mode uses typical traffic for the time of day. Everything runs locally.
 
 ![Travel times from Toa Payoh in the weekday AM peak, with the fastest route to Changi Airport](docs/screenshot.png)
 
-## Quick start (Windows)
+## Quick start
 
-Double-click **`run.cmd`**, or from a terminal:
+You need **Python 3.12, 3.13 or 3.14** and **[Poetry](https://python-poetry.org/docs/#installation)** 2.x.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File run.ps1              # opens http://127.0.0.1:8000
-powershell -ExecutionPolicy Bypass -File run.ps1 -Port 8080 -NoBrowser
-```
+| | Install the prerequisites | Run the app |
+|---|---|---|
+| **Windows** | Python from [python.org](https://www.python.org/downloads/), then `py -3.12 -m pip install --user poetry` | Double-click **`run.cmd`**, or `powershell -ExecutionPolicy Bypass -File run.ps1` |
+| **macOS** | `brew install python@3.13 poetry` (or python.org Python + `pipx install poetry`) | `./run.sh` |
 
-On first run this creates a Python 3.12 virtual environment in `.venv`, installs the
-packages in `requirements.txt`, and builds the networks (about a minute, and it
-downloads the ~40 MB OpenStreetMap extract). Later runs start in a few seconds.
+Both launchers take a port and can skip opening the browser:
+`run.ps1 -Port 8080 -NoBrowser` on Windows, `./run.sh --port 8080 --no-browser` on macOS.
 
-Manual equivalent (any OS):
+The first run takes a few minutes:
+
+1. Poetry creates `.venv` in the project and installs the locked dependencies from `poetry.lock`.
+2. The networks are built (about a minute, including a ~40 MB OpenStreetMap download).
+3. The app opens at http://127.0.0.1:8000.
+
+Later runs start in a few seconds. The same steps with Poetry directly, on any OS:
 
 ```bash
-python3.12 -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt   # .venv/bin/python on macOS/Linux
-.venv/Scripts/python -m isochrone build     # networks -> data/build (gitignored)
-.venv/Scripts/python -m isochrone serve --open
+poetry install                           # .venv + locked dependencies (incl. dev tools)
+poetry run isochrone build               # networks -> data/build (gitignored)
+poetry run isochrone serve --open        # http://127.0.0.1:8000
 ```
 
-The map background loads tiles from OneMap (or Esri) over the internet; all routing
-is computed locally.
+If Poetry picks an unsupported interpreter (for example macOS's built-in `python3`, which
+is 3.9), point it at a newer one once with `poetry env use python3.13`. The map background
+loads tiles from OneMap (or Esri) over the internet; all routing is computed locally.
 
 ## Using the app
 
 - **Click** the map to set the start point (or drag the black pin). The heatmap shows the
   door-to-door travel time from there to every 50–250 m cell of land.
-- **Right-click** a point (or use *Route* in the places table) to see the fastest itinerary
-  there: walks, bus services, train lines, interchanges and waits.
+- **Right-click** a point (**Ctrl-click** or two-finger click on a Mac), or use *Route* in the
+  places table, to see the fastest itinerary there: walks, bus services, train lines,
+  interchanges and waits.
 - **Travel by**: public transport (walk + bus + MRT/LRT) or car.
 - **Time of day**: weekday AM peak (06:30–08:30), midday, PM peak (17:00–19:00) or
   evening (19:00–23:00). These match the headway bands LTA publishes for buses.
@@ -138,8 +145,8 @@ Raffles Place in the AM peak, with average waits:
 | Woodlands | 51 |
 | Tuas Link | 54 |
 
-These are in line with typical journey-planner times. `scripts/probe.py` prints times to
-well-known places from any origin, and `pytest` runs 37 unit and integration tests.
+These are in line with typical journey-planner times. The development commands below
+reproduce these checks.
 
 ## Data sources and freshness
 
@@ -173,9 +180,9 @@ LTA_ACCOUNT_KEY=your-key
 Then:
 
 ```bash
-.venv/Scripts/python -m isochrone fetch                 # all sources
-.venv/Scripts/python -m isochrone fetch --only osm --force   # just a newer OSM extract
-.venv/Scripts/python -m isochrone build                 # rebuild networks (~45 s)
+poetry run isochrone fetch                          # all sources
+poetry run isochrone fetch --only osm --force       # just a newer OSM extract
+poetry run isochrone build                          # rebuild networks (~1 min)
 ```
 
 Sources: `lta`, `speeds`, `osm`, `hdb`, `boundary`, `busrouter`. Only `lta` needs the key.
@@ -198,10 +205,25 @@ data/raw/        cached public datasets (committed)
 data/manual/     hand-curated inputs (MRT interchange timings)
 scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
 tests/           pytest suite
+pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
+run.cmd, run.ps1 Windows launcher
+run.sh           macOS/Linux launcher
 ```
 
 Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) are all in
 `isochrone/config.py`.
+
+## Development
+
+```bash
+poetry run pytest                                     # 37 unit + integration tests
+poetry run python scripts/probe.py "Jurong East MRT"  # times to well-known places from an origin
+poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/data/travel_times_final_20250706.csv
+poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
+```
+
+The integration tests and scripts need a built network (`poetry run isochrone build`).
+`poetry add <package>` updates `pyproject.toml` and `poetry.lock` together; commit both.
 
 ## API
 
