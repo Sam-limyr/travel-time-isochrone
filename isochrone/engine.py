@@ -122,6 +122,8 @@ class Engine:
             setattr(self, name, tr[name].astype(np.float64))
         self.ride_stop, self.ride_pattern = tr["ride_stop"], tr["ride_pattern"]
         self.platform_line = [transit.line_of(c) for c in self.meta["names"]["platform_code"]]
+        self.hop_factor = np.array([config.RAIL_RUNTIME_FACTOR.get(self.platform_line[p], 1.0)
+                                    for p in tr["hop"][:, 0]])
         stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))
         self.station_names = {code: f["properties"]["name"] for f in stations["features"]
                               for code in f["properties"]["codes"].split(" / ")}
@@ -237,10 +239,11 @@ class Engine:
         idx = s[K_RAIL_THROUGH]
         t = p[idx].astype(np.int64)
         first_hop = tr["through"][t, 0]
-        runs = tr["hop_run"][first_hop, b] + tr["hop_dwell"][first_hop, b]
+        runs = (tr["hop_run"][first_hop, b] + tr["hop_dwell"][first_hop, b]) * self.hop_factor[first_hop]
         w[idx] = np.where((tr["through_bands"][t] >> b) & 1 == 1, runs, OFF)
         idx = s[K_RAIL_ALIGHT]
-        w[idx] = tr["hop_run"][p[idx].astype(np.int64), b]
+        h = p[idx].astype(np.int64)
+        w[idx] = tr["hop_run"][h, b] * self.hop_factor[h]
 
         w[~np.isfinite(w)] = OFF  # NaN = not running in this band; inf = disabled
         return np.maximum(w, EPS)

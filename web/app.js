@@ -723,7 +723,7 @@ function buildAbout() {
   const model = el("ul", {},
     el("li", {}, "Public transport: walk along real footpaths (and through HDB void decks), wait, ride, change. One shortest-path search per click."),
     el("li", {}, "Bus waits come from LTA's published headway ranges per time band; running times from LTA's scheduled times, adjusted for peak traffic."),
-    el("li", {}, "Train waits and running times come from the official timetable; interchange walks use the Reddit-measured timings, scaled by walking speed."),
+    el("li", {}, "Train waits and running times come from the official timetable (running times calibrated per line, as the feed rounds them up to whole minutes); interchange walks use the Reddit-measured timings, scaled by walking speed."),
     el("li", {}, "Car: typical-congestion speeds by road class for the time band, with peaks calibrated to LTA's measured peak-hour averages (no live traffic). The start and end are joined to the road network on foot."),
     el("li", {}, "Limitations: no real-time data; boarding the first of several buses that go your way is not modelled (waits can be pessimistic at busy stops); cross-border and ferry services are excluded."),
   );

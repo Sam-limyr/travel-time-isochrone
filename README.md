@@ -88,6 +88,13 @@ between departures, so irregular service waits longer than half the headway. Sta
 access uses LTA's exit coordinates plus 60 s to enter and 45 s to leave (fare gates and
 escalators).
 
+The feed (version 0.1) gives running times in whole minutes plus a flat 40 s dwell, which
+overstates journeys: it schedules 103 minutes for the full East–West Line, against the
+~80 minutes usually quoted. In-train times are therefore scaled per line by factors
+fitted against the mrt.sg station-to-station matrix: EWL 0.77, NSL 0.94, NEL 0.78, CCL
+0.80, DTL 0.76, TEL 0.85, and LRTs 1.0 (no reference data). They're in
+`RAIL_RUNTIME_FACTOR` in `isochrone/config.py`; set them to 1.0 to use the raw timetable.
+
 **Interchanges** use the Reddit-measured leisurely walking times in
 [`data/manual/mrt_transfer_times.csv`](data/manual/mrt_transfer_times.csv), scaled by
 `4.0 km/h ÷ your walking speed`. At the default 4.8 km/h a 200 s leisurely transfer
@@ -110,17 +117,28 @@ parking allowance or the colour scale reuses the last search.
 ### Validation
 
 `scripts/validate_mrt.py` compares modelled station-to-station times with an external
-matrix, such as the mrt.sg matrix used in the sibling *the-fastest-journey* project. With
-average waits, across 20,306 station pairs:
+matrix, such as the mrt.sg matrix used in the sibling *the-fastest-journey* project. The
+fitting behind the rail factors above shows mrt.sg's times follow "about 4 minutes plus a
+per-stop time", so the comparison has two parts:
 
-| Measure | Result |
+| Comparison (20,306 station pairs) | Raw timetable | Calibrated |
+|---|---|---|
+| Per-stop in-train time vs mrt.sg (EWL/NEL/DTL) | 1.28–1.32× | ≈1.0× (fitted) |
+| Platform-to-platform time with average waits, median difference | +0.2 min | −5.2 min |
+
+The calibrated median sits below mrt.sg by about that fixed ~4-minute allowance, which
+the model replaces with its own waits and transfer walks. Door-to-door spot checks from
+Raffles Place in the AM peak, with average waits:
+
+| To | Minutes |
 |---|---|
-| Median difference | +0.2 min |
-| Mean absolute difference | 3.2 min |
-| Pairs within 5 min | 80% |
+| Jurong East | 32 |
+| Tampines | 35 |
+| Changi Airport | 41 |
+| Woodlands | 51 |
+| Tuas Link | 54 |
 
-The largest differences are long East–West Line trips: LTA's timetable schedules
-102.7 min end to end, while mrt.sg estimated 83 min. `scripts/probe.py` prints times to
+These are in line with typical journey-planner times. `scripts/probe.py` prints times to
 well-known places from any origin, and `pytest` runs 37 unit and integration tests.
 
 ## Data sources and freshness
@@ -201,10 +219,11 @@ Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) a
 - **One bus service per boarding**: at a stop served by several services going your way,
   real passengers take whichever comes first; the model waits for the best single
   service, so busy corridors can look slightly slower than they are.
-- **Timetable start points**: LTA's timetable (v0.1) starts every train at a terminus, so
-  trips are grouped into time bands by departure from the terminus. This avoids false
+- **Timetable quirks**: LTA's timetable (v0.1) starts every train at a terminus, so trips
+  are grouped into time bands by departure from the terminus. This avoids false
   early-morning gaps mid-line, but can shift a band's service level by up to one trip
-  length.
+  length. Its whole-minute running times are corrected with per-line factors (above),
+  which will need revisiting when LTA publishes a finer-grained feed.
 - **Excluded services**: bus services with no published headways (20 directions, mostly
   short workings such as 7A and a few City Direct runs), the Malaysian end of cross-border
   buses, ferries, Sentosa Express and the Changi Airport Skytrain.

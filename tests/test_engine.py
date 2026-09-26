@@ -37,9 +37,9 @@ def iso(engine, **kw):
 def test_plausible_transit_times(engine):
     r = iso(engine)
     assert minutes_at(r, *RAFFLES) < 5
-    assert 25 < minutes_at(r, *PLACES["jurong_east"]) < 50
-    assert 20 < minutes_at(r, *PLACES["bishan"]) < 40
-    assert 40 < minutes_at(r, *PLACES["changi_airport"]) < 70
+    assert 22 < minutes_at(r, *PLACES["jurong_east"]) < 50
+    assert 18 < minutes_at(r, *PLACES["bishan"]) < 40
+    assert 30 < minutes_at(r, *PLACES["changi_airport"]) < 70
 
 
 def test_wait_assumptions_are_ordered(engine):

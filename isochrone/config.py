@@ -67,6 +67,14 @@ BUS_CRUISE_KMH = (22.0, 50.0)
 BUS_SCHEDULE_FACTOR_RANGE = (0.6, 1.8)  # schedule/prior ratios outside this are treated as data errors
 
 # --- Trains -------------------------------------------------------------------
+# LTA's GTFS (feed version 0.1) gives stop-to-stop running times in whole minutes
+# plus a flat 40 s dwell, which overstates journeys: it schedules 103 min for the
+# full East-West Line, against the ~80 min usually quoted. These per-line factors
+# scale in-train time (running + dwell) and were fitted against the mrt.sg
+# station-to-station matrix along each line (see scripts/validate_mrt.py and the
+# README). Set a factor to 1.0 to use the raw timetable; LRTs have no reference data.
+RAIL_RUNTIME_FACTOR = {"EWL": 0.77, "NSL": 0.94, "NEL": 0.78, "CCL": 0.80, "DTL": 0.76, "TEL": 0.85,
+                       "BPLRT": 1.0, "SKLRT": 1.0, "PGLRT": 1.0}
 STATION_ENTRY_S = 60.0    # fare gates + escalators, street to platform
 STATION_EXIT_S = 45.0
 STATION_WALK_EXTRA_M = 30.0  # platform-level walking on top of exit-to-platform distance
