@@ -74,18 +74,19 @@ DEFAULT_INTERCHANGE_S = 180.0  # leisurely transfer time where the CSV has no en
 DEFAULT_SAME_LINE_TRANSFER_S = 60.0  # switching platforms on the same line
 
 # --- Driving ------------------------------------------------------------------
-# Typical-congestion speeds (km/h) by road class and band. They fold in junction
-# delays and are in line with LTA's published peak averages (~60 km/h on
-# expressways, ~28 km/h on arterial roads).
+# Typical-congestion speeds (km/h) by road class and band, folding in junction
+# delays. Peak values are calibrated to LTA's measured peak-hour averages
+# (data/raw/lta/average_peak_speeds.csv: 2025 = 55 km/h on expressways, 29 km/h
+# on arterial roads); off-peak values are modelled as moderately faster.
 CAR_SPEEDS = {
     #                am   mid  pm   eve
-    "motorway":      (58, 72, 55, 78),
+    "motorway":      (56, 70, 54, 76),
     "motorway_link": (38, 45, 36, 48),
-    "trunk":         (34, 40, 32, 44),
+    "trunk":         (34, 40, 32, 42),
     "trunk_link":    (28, 32, 27, 34),
-    "primary":       (27, 32, 26, 35),
+    "primary":       (28, 32, 27, 34),
     "primary_link":  (23, 27, 22, 29),
-    "secondary":     (25, 29, 24, 32),
+    "secondary":     (26, 29, 25, 31),
     "secondary_link": (22, 25, 21, 27),
     "tertiary":      (23, 26, 22, 28),
     "tertiary_link": (20, 23, 20, 24),

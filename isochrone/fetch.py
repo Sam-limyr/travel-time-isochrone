@@ -164,6 +164,17 @@ def _datagov_download(dataset_id: str, dest: Path) -> None:
     raise RuntimeError(f"data.gov.sg did not return a download URL for {dataset_id}")
 
 
+PEAK_SPEEDS_DATASET_ID = "d_26f6afadf2f86b2004f9a1e28f5564cc"  # LTA "Average Speed During Peak Hours"
+
+
+def fetch_peak_speeds() -> None:
+    """LTA's yearly average peak-hour road speeds (used to calibrate car mode)."""
+    print("data.gov.sg: LTA Average Speed During Peak Hours ...")
+    _datagov_download(PEAK_SPEEDS_DATASET_ID, LTA_DIR / "average_peak_speeds.csv")
+    _record_source("lta_peak_speeds", url=f"https://data.gov.sg/datasets/{PEAK_SPEEDS_DATASET_ID}/view",
+                   licence="Singapore Open Data Licence v1.0 (LTA via data.gov.sg)")
+
+
 def fetch_hdb(force: bool = False) -> None:
     """Download HDB building footprints (used to let walkers cut through void decks)."""
     if not HDB_GEOJSON.exists() or force:
@@ -241,8 +252,8 @@ def fetch_busrouter() -> None:
                    licence="Route lines from github.com/cheeaun/sgbusdata (derived from LTA data)")
 
 
-FETCHERS = {"lta": fetch_lta, "osm": fetch_osm, "hdb": fetch_hdb, "boundary": fetch_boundary,
-            "busrouter": fetch_busrouter}
+FETCHERS = {"lta": fetch_lta, "speeds": fetch_peak_speeds, "osm": fetch_osm, "hdb": fetch_hdb,
+            "boundary": fetch_boundary, "busrouter": fetch_busrouter}
 
 
 def fetch(only: list[str] | None = None, force: bool = False) -> None:

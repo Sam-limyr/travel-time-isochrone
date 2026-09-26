@@ -9,7 +9,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_fetch = sub.add_parser("fetch", help="download raw datasets")
-    p_fetch.add_argument("--only", help="comma-separated subset of: lta,osm,hdb,boundary,busrouter")
+    p_fetch.add_argument("--only", help="comma-separated subset of: lta,speeds,osm,hdb,boundary,busrouter")
     p_fetch.add_argument("--force", action="store_true", help="re-download cached large files")
 
     sub.add_parser("build", help="build the walk/drive/transit networks from raw data")

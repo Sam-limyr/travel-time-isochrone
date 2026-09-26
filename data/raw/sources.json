@@ -33,6 +33,11 @@
     "train_gtfs_timestamp": "2026-09-26T08:30:49+08:00",
     "url": "https://datamall2.mytransport.sg/ltaodataservice/"
   },
+  "lta_peak_speeds": {
+    "fetched_at": "2026-09-26T01:28:10+00:00",
+    "licence": "Singapore Open Data Licence v1.0 (LTA via data.gov.sg)",
+    "url": "https://data.gov.sg/datasets/d_26f6afadf2f86b2004f9a1e28f5564cc/view"
+  },
   "openstreetmap": {
     "fetched_at": "2026-09-26T00:34:26+00:00",
     "last_modified": "Fri, 25 Sep 2026 01:01:23 GMT",
