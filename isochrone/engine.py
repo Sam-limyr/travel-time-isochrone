@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import numpy as np
@@ -25,7 +26,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
-from . import config, geo, osm
+from . import config, geo, osm, transit
 
 EPS = 1e-3          # seconds; stands in for zero-cost edges (explicit zeros are fragile in sparse graphs)
 OFF = 1e9           # weight of a disabled edge
@@ -81,8 +82,12 @@ class _Csr:
         self.indptr = np.concatenate([[0], np.cumsum(np.bincount(u, minlength=self.n))]).astype(np.int32)
         self.n_edges = len(u)
 
-    def run(self, weights: np.ndarray, origin_nodes: np.ndarray, origin_s: np.ndarray, limit: float) -> np.ndarray:
-        """``weights`` are per edge in sorted order, excluding the origin slots."""
+    def run(self, weights: np.ndarray, origin_nodes: np.ndarray, origin_s: np.ndarray,
+            limit: float) -> tuple[np.ndarray, np.ndarray]:
+        """Shortest times and predecessors from the origin.
+
+        ``weights`` are per edge in sorted order, excluding the origin slots.
+        """
         data = np.empty(self.n_edges)
         data[:-ORIGIN_K] = weights
         data[-ORIGIN_K:] = OFF
@@ -91,7 +96,7 @@ class _Csr:
         indices[-ORIGIN_K:][:m] = origin_nodes
         data[-ORIGIN_K:][:m] = np.maximum(origin_s, EPS)
         graph = csr_matrix((data, indices, self.indptr), shape=(self.n, self.n))
-        return dijkstra(graph, directed=True, indices=self.origin, limit=limit)
+        return dijkstra(graph, directed=True, indices=self.origin, limit=limit, return_predecessors=True)
 
 
 class Engine:
@@ -110,6 +115,14 @@ class Engine:
         self.drive_ids, self.drive_tree = dm, cKDTree(np.column_stack([self.drive_x[dm], self.drive_y[dm]]))
         self._build_transit(walk, tr)
         self._build_drive(drive)
+        self._cache: OrderedDict = OrderedDict()
+        for name in ("stop_x", "stop_y", "entrance_x", "entrance_y", "platform_x", "platform_y"):
+            setattr(self, name, tr[name].astype(np.float64))
+        self.ride_stop, self.ride_pattern = tr["ride_stop"], tr["ride_pattern"]
+        self.platform_line = [transit.line_of(c) for c in self.meta["names"]["platform_code"]]
+        stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))
+        self.station_names = {code: f["properties"]["name"] for f in stations["features"]
+                              for code in f["properties"]["codes"].split(" / ")}
 
     # --- graph assembly ---------------------------------------------------------
 
@@ -172,7 +185,7 @@ class Engine:
         self.t_walk_len[wsel] = walk["length"][self.t_param[wsel].astype(np.int64)]
         self.t_walk_kind[wsel] = walk["kind"][self.t_param[wsel].astype(np.int64)]
         self.t_sel = {k: np.nonzero(self.t_kind == k)[0] for k in range(K_ORIGIN)}
-        self.tr = {k: tr[k] for k in ("bus_wait", "ride_hop_s", "hop_wait", "hop_run", "hop_dwell", "through",
+        self.tr = {k: tr[k] for k in ("bus_wait", "ride_hop_s", "hop", "hop_wait", "hop_run", "hop_dwell", "through",
                                         "through_bands", "transfer_s")}
         self.offsets = {"stop": o_stop, "ride": o_ride, "entrance": o_ent, "platform": o_plat, "hop": o_hop}
 
@@ -234,12 +247,18 @@ class Engine:
 
     # --- queries ----------------------------------------------------------------
 
-    def isochrone(self, req: Request) -> dict:
-        req.validate()
-        t0 = time.perf_counter()
+    def _search(self, req: Request) -> tuple[np.ndarray, np.ndarray, float, float, dict]:
+        """Dijkstra from the request origin, cached: switching resolution, parking
+        allowance or asking for a route reuses the same search."""
+        key = (req.mode, round(req.lon, 6), round(req.lat, 6), req.band, req.wait, req.walk_kmh,
+               req.bus, req.rail, req.voiddeck)
         x, y = (float(c) for c in geo.to_xy(req.lon, req.lat))
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            dist, pred, snap_m = self._cache[key]
+            return dist, pred, x, y, {"cached": True, "snap_m": snap_m}
+        t0 = time.perf_counter()
         v = req.walk_kmh / 3.6
-        limit = config.MAX_MINUTES * 60
         if req.mode == "transit":
             tree, ids, graph = self.walk_tree, self.walk_ids, self.t_graph
             weights = self.transit_weights(req)
@@ -249,41 +268,180 @@ class Engine:
         d, i = tree.query([x, y], k=ORIGIN_K)
         if d[0] > ORIGIN_MAX_M:
             raise ValueError("That point is too far from any footpath or road in Singapore.")
-        origin_nodes = ids[i]
-        origin_s = d * config.STRAIGHT_LINE_DETOUR / v
         t1 = time.perf_counter()
-        dist = graph.run(weights, origin_nodes, origin_s, limit)
+        dist, pred = graph.run(weights, ids[i], d * config.STRAIGHT_LINE_DETOUR / v, config.MAX_MINUTES * 60)
         t2 = time.perf_counter()
+        self._cache[key] = (dist, pred, float(d[0]))
+        while len(self._cache) > 8:
+            self._cache.popitem(last=False)
+        return dist, pred, x, y, {"cached": False, "snap_m": float(d[0]),
+                                  "weights_ms": round((t1 - t0) * 1000), "dijkstra_ms": round((t2 - t1) * 1000)}
 
+    def _cell_times(self, req: Request, dist: np.ndarray, x: float, y: float) -> tuple[np.ndarray, np.ndarray]:
+        """Seconds to reach each land cell of the requested grid (and the cell ids)."""
         g = self.meta["grids"][req.res]
-        if req.mode == "transit":
-            nodes, metres = self.grids[f"{req.res}_walk_node"], self.grids[f"{req.res}_walk_m"]
-            extra = 0.0
-        else:
-            nodes, metres = self.grids[f"{req.res}_drive_node"], self.grids[f"{req.res}_drive_m"]
-            extra = req.parking_min * 60
+        v = req.walk_kmh / 3.6
+        kind = "walk" if req.mode == "transit" else "drive"
+        nodes, metres = self.grids[f"{req.res}_{kind}_node"], self.grids[f"{req.res}_{kind}_m"]
+        extra = req.parking_min * 60 if req.mode == "car" else 0.0
         cell_s = (dist[nodes] + metres / v).min(axis=1) + extra
-        # the origin's own neighbourhood: walking straight there can beat the network
+        # near the origin, walking straight there can beat the network
         cells = self.grids[f"{req.res}_cell"]
         cx = g["origin_xy"][0] + (cells % g["nx"] + 0.5) * g["res_m"]
         cy = g["origin_xy"][1] - (cells // g["nx"] + 0.5) * g["res_m"]
         direct = np.hypot(cx - x, cy - y) * config.STRAIGHT_LINE_DETOUR / v
-        cell_s = np.minimum(cell_s, np.where(direct < 600 / v, direct, np.inf))
+        return np.minimum(cell_s, np.where(direct < 600 / v, direct, np.inf)), cells
 
+    def isochrone(self, req: Request) -> dict:
+        req.validate()
+        t0 = time.perf_counter()
+        dist, _, x, y, info = self._search(req)
+        t1 = time.perf_counter()
+        cell_s, cells = self._cell_times(req, dist, x, y)
+        g = self.meta["grids"][req.res]
+        limit = config.MAX_MINUTES * 60
         grid = np.full(g["nx"] * g["ny"], NO_DATA, np.uint16)
-        reached = cell_s <= limit
-        grid[cells] = np.where(reached, np.round(cell_s / 6).clip(0, UNREACHED - 1), UNREACHED).astype(np.uint16)
-        t3 = time.perf_counter()
-
+        grid[cells] = np.where(cell_s <= limit, np.round(cell_s / 6).clip(0, UNREACHED - 1),
+                               UNREACHED).astype(np.uint16)
+        t2 = time.perf_counter()
         cell_km2 = (g["res_m"] / 1000) ** 2
         minutes = cell_s / 60
-        area = {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)}
         return {
             "grid": {"nx": g["nx"], "ny": g["ny"], "res_m": g["res_m"], "bounds": g["bounds"],
                      "encoding": "uint16 little-endian, tenths of a minute; 65535 = no data, 65534 = unreachable",
                      "data": base64.b64encode(grid.tobytes()).decode("ascii")},
-            "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(float(d[0]), 1)},
-            "area_km2": area,
-            "timing_ms": {"setup": round((t1 - t0) * 1000), "dijkstra": round((t2 - t1) * 1000),
-                          "grid": round((t3 - t2) * 1000)},
+            "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
+            "area_km2": {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)},
+            "timing_ms": {"search": round((t1 - t0) * 1000), "grid": round((t2 - t1) * 1000),
+                          "cached": info["cached"]},
         }
+
+    # --- itineraries ------------------------------------------------------------
+
+    def route(self, req: Request, to_lon: float, to_lat: float) -> dict:
+        """Fastest itinerary from the request origin to a point, as legs with geometry."""
+        req.validate()
+        dist, pred, x, y, _ = self._search(req)
+        v = req.walk_kmh / 3.6
+        tx, ty = (float(c) for c in geo.to_xy(to_lon, to_lat))
+        tree, ids = (self.walk_tree, self.walk_ids) if req.mode == "transit" else (self.drive_tree, self.drive_ids)
+        d, i = tree.query([tx, ty], k=ORIGIN_K)
+        cand = dist[ids[i]] + d * config.STRAIGHT_LINE_DETOUR / v
+        best = int(np.argmin(cand))
+        direct = np.hypot(tx - x, ty - y) * config.STRAIGHT_LINE_DETOUR / v
+        extra = req.parking_min * 60 if req.mode == "car" else 0.0
+        if not np.isfinite(cand[best]) and direct >= 600 / v:
+            return {"reachable": False}
+        if direct < 600 / v and direct <= cand[best] + extra:
+            return {"reachable": True, "total_s": round(direct), "legs": [
+                {"type": "walk", "seconds": round(direct), "coords": [[req.lon, req.lat], [to_lon, to_lat]]}]}
+
+        path = [int(ids[i[best]])]
+        while pred[path[-1]] >= 0:
+            path.append(int(pred[path[-1]]))
+        path.reverse()
+        origin = (self.t_graph if req.mode == "transit" else self.d_graph).origin
+        if path[0] == origin:
+            path = path[1:]
+        if req.mode == "transit":
+            legs = self._transit_legs(path, dist)
+        else:
+            legs = [{"type": "drive", "seconds": round(dist[path[-1]] - dist[path[0]]),
+                     "coords": self._coords(path, drive=True)}]
+            if extra:
+                legs.append({"type": "park", "seconds": round(extra)})
+        legs.insert(0, {"type": "walk", "seconds": round(dist[path[0]]),
+                        "coords": [[req.lon, req.lat]] + self._coords(path[:1], drive=req.mode == "car")})
+        tail = d[best] * config.STRAIGHT_LINE_DETOUR / v
+        legs.append({"type": "walk", "seconds": round(tail),
+                     "coords": self._coords(path[-1:], drive=req.mode == "car") + [[to_lon, to_lat]]})
+        merged = []
+        for leg in legs:  # fold consecutive walks together
+            if merged and leg["type"] == "walk" == merged[-1]["type"]:
+                merged[-1]["seconds"] += leg["seconds"]
+                merged[-1]["coords"] += leg["coords"]
+            else:
+                merged.append(leg)
+        return {"reachable": True, "total_s": round(cand[best] + extra), "legs": [m for m in merged if m["seconds"] > 0 or m["type"] != "walk"]}
+
+    def _node_xy(self, n: int) -> tuple[float, float]:
+        o = self.offsets
+        if n < o["stop"]:
+            return self.walk_x[n], self.walk_y[n]
+        if n < o["ride"]:
+            return self.stop_x[n - o["stop"]], self.stop_y[n - o["stop"]]
+        if n < o["entrance"]:
+            s = self.ride_stop[n - o["ride"]]
+            return self.stop_x[s], self.stop_y[s]
+        if n < o["platform"]:
+            return self.entrance_x[n - o["entrance"]], self.entrance_y[n - o["entrance"]]
+        if n < o["hop"]:
+            return self.platform_x[n - o["platform"]], self.platform_y[n - o["platform"]]
+        p = self.tr["hop"][n - o["hop"], 0]
+        return self.platform_x[p], self.platform_y[p]
+
+    def _coords(self, nodes: list[int], drive: bool = False) -> list[list[float]]:
+        if drive:
+            xs, ys = self.drive_x[nodes], self.drive_y[nodes]
+        else:
+            xs, ys = zip(*(self._node_xy(n) for n in nodes)) if nodes else ([], [])
+        lon, lat = geo.to_lonlat(np.array(xs), np.array(ys))
+        return [[round(float(a), 6), round(float(b), 6)] for a, b in zip(np.atleast_1d(lon), np.atleast_1d(lat))]
+
+    def _node_type(self, n: int) -> str:
+        o = self.offsets
+        for name, start in (("hop", o["hop"]), ("platform", o["platform"]), ("entrance", o["entrance"]),
+                            ("ride", o["ride"]), ("stop", o["stop"])):
+            if n >= start:
+                return name
+        return "walk"
+
+    def _transit_legs(self, path: list[int], dist: np.ndarray) -> list[dict]:
+        o, names = self.offsets, self.meta["names"]
+        types = [self._node_type(n) for n in path]
+        legs, i = [], 0
+        walk_start = 0
+        while i < len(path) - 1:
+            a, t_b = path[i], types[i + 1]
+            if types[i] == "stop" and t_b == "ride" or types[i] == "platform" and t_b == "hop":
+                if i > walk_start:
+                    legs.append({"type": "walk", "seconds": round(dist[a] - dist[path[walk_start]]),
+                                 "coords": self._coords(path[walk_start:i + 1])})
+                j = i + 1
+                while j + 1 < len(path) and types[j + 1] == t_b:
+                    j += 1
+                board, alight = a, path[j + 1]
+                wait = dist[path[i + 1]] - dist[board]
+                if t_b == "ride":
+                    pattern = int(self.ride_pattern[path[i + 1] - o["ride"]])
+                    leg = {"type": "bus", "service": names["bus_pattern"][pattern].split(" ")[0],
+                           "from": self._stop_label(board - o["stop"]), "to": self._stop_label(alight - o["stop"])}
+                else:
+                    p0, p1 = board - o["platform"], alight - o["platform"]
+                    leg = {"type": "train", "line": self.platform_line[p0],
+                           "from": self.station_label(p0), "to": self.station_label(p1)}
+                leg |= {"stops": j - i, "wait_s": round(wait), "ride_s": round(dist[alight] - dist[path[i + 1]]),
+                        "seconds": round(dist[alight] - dist[board]), "coords": self._coords(path[i:j + 2])}
+                legs.append(leg)
+                i = j + 1
+                walk_start = i
+            elif types[i] == "platform" and t_b == "platform":
+                if i > walk_start:
+                    legs.append({"type": "walk", "seconds": round(dist[a] - dist[path[walk_start]]),
+                                 "coords": self._coords(path[walk_start:i + 1])})
+                legs.append({"type": "transfer", "at": self.station_label(a - o["platform"]),
+                             "seconds": round(dist[path[i + 1]] - dist[a]), "coords": self._coords(path[i:i + 2])})
+                i += 1
+                walk_start = i
+            else:
+                i += 1
+        if len(path) - 1 > walk_start:
+            legs.append({"type": "walk", "seconds": round(dist[path[-1]] - dist[path[walk_start]]),
+                         "coords": self._coords(path[walk_start:])})
+        return legs
+
+    def _stop_label(self, s: int) -> str:
+        return f"{self.meta['names']['bus_stop_name'][s]} ({self.meta['names']['bus_stop'][s]})"
+
+    def station_label(self, p: int) -> str:
+        return f"{self.station_names.get(self.meta['names']['platform_code'][p], '?')} ({self.meta['names']['platform_code'][p]})"

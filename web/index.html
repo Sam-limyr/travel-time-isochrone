@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SG Isochrones</title>
+  <link rel="stylesheet" href="vendor/maplibre-gl/maplibre-gl.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="map" aria-label="Map. Click to set the starting point; right-click to show the route to a point."></div>
+
+  <aside id="panel" aria-label="Controls">
+    <header class="panel-head">
+      <div>
+        <h1>SG Isochrones</h1>
+        <p class="hint" id="hint">Click the map to set a starting point. Right-click for the route to a point.</p>
+      </div>
+      <button type="button" id="panel-toggle" class="icon-btn" aria-expanded="true" aria-controls="panel-body" title="Hide controls">▾</button>
+    </header>
+
+    <div id="panel-body">
+      <section>
+        <h2>Travel by</h2>
+        <div class="seg" role="radiogroup" aria-label="Travel mode" data-name="mode">
+          <label><input type="radio" name="mode" value="transit" checked><span>Public transport</span></label>
+          <label><input type="radio" name="mode" value="car"><span>Car</span></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Time of day <span class="sub">(weekday)</span></h2>
+        <div class="seg seg-4" role="radiogroup" aria-label="Time of day" id="band-group" data-name="band"></div>
+      </section>
+
+      <section class="transit-only">
+        <h2>Waiting at stops</h2>
+        <div class="seg seg-3" role="radiogroup" aria-label="Waiting time assumption" data-name="wait">
+          <label title="Every bus and train arrives just as you get there"><input type="radio" name="wait" value="best"><span>Best case</span></label>
+          <label title="You turn up at a random time: the expected wait from published headways"><input type="radio" name="wait" value="avg" checked><span>Average</span></label>
+          <label title="You just missed one: wait the longest scheduled gap"><input type="radio" name="wait" value="worst"><span>Worst case</span></label>
+        </div>
+        <p class="note" id="wait-note"></p>
+        <div class="checks">
+          <label><input type="checkbox" id="use-bus" checked> Buses</label>
+          <label><input type="checkbox" id="use-rail" checked> MRT / LRT</label>
+          <label title="Walk straight through the ground floor of HDB blocks"><input type="checkbox" id="use-voiddeck" checked> HDB void-deck shortcuts</label>
+        </div>
+      </section>
+
+      <section class="car-only" hidden>
+        <h2>Parking allowance</h2>
+        <div class="seg seg-3" role="radiogroup" aria-label="Parking allowance" id="parking-group" data-name="parking"></div>
+        <p class="note">Added at the destination for finding a space and walking from the car. Driving speeds reflect typical congestion for the chosen time of day.</p>
+      </section>
+
+      <section>
+        <h2><label for="walk">Walking speed</label> <output id="walk-out" for="walk"></output></h2>
+        <input type="range" id="walk" min="3" max="6.5" step="0.1" list="walk-ticks">
+        <datalist id="walk-ticks"></datalist>
+        <div class="ticks" id="walk-tick-labels" aria-hidden="true"></div>
+        <p class="note transit-only">MRT interchange walks come from leisurely-pace timings and scale with this speed.</p>
+      </section>
+
+      <section>
+        <h2>Resolution</h2>
+        <div class="seg seg-3" role="radiogroup" aria-label="Grid resolution" id="res-group" data-name="res"></div>
+      </section>
+
+      <section>
+        <h2>Display</h2>
+        <div class="seg" role="radiogroup" aria-label="Colour style" data-name="style">
+          <label><input type="radio" name="style" value="smooth" checked><span>Smooth</span></label>
+          <label><input type="radio" name="style" value="bands"><span>Bands</span></label>
+        </div>
+        <div class="row" id="max-row">
+          <label for="max-min">Colour up to</label>
+          <input type="range" id="max-min" min="30" max="150" step="5">
+          <output id="max-out" for="max-min"></output>
+        </div>
+        <div class="row" id="bandsize-row" hidden>
+          <span>Band width</span>
+          <div class="seg seg-4 mini" role="radiogroup" aria-label="Band width in minutes" id="bandsize-group" data-name="bandSize"></div>
+        </div>
+        <div class="row">
+          <label for="opacity">Opacity</label>
+          <input type="range" id="opacity" min="0.2" max="1" step="0.05">
+        </div>
+      </section>
+
+      <section>
+        <h2>Overlays</h2>
+        <div class="checks">
+          <label><input type="checkbox" id="ov-mrt" checked> MRT / LRT lines</label>
+          <label><input type="checkbox" id="ov-bus"> Bus routes</label>
+          <label><input type="checkbox" id="ov-stops"> Bus stops <span class="sub">(zoom in)</span></label>
+        </div>
+      </section>
+
+      <section id="route-section" hidden>
+        <h2>Route <button type="button" class="link-btn" id="route-clear">clear</button></h2>
+        <div id="route"></div>
+      </section>
+
+      <section>
+        <h2>Reachable area</h2>
+        <table class="data" id="area-table">
+          <thead><tr><th scope="col">Within</th><th scope="col" class="num">Land area</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="note" id="timing"></p>
+      </section>
+
+      <section>
+        <h2>Travel time to places</h2>
+        <table class="data" id="places-table">
+          <thead><tr><th scope="col">Place</th><th scope="col" class="num">Minutes</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <details class="about">
+        <summary>About the data and model</summary>
+        <div id="about"></div>
+      </details>
+
+      <div class="theme-row">
+        <label for="basemap">Basemap</label>
+        <select id="basemap">
+          <option value="onemap">OneMap (SLA)</option>
+          <option value="esri">Esri grey (labels on top)</option>
+        </select>
+      </div>
+      <div class="theme-row">
+        <label for="theme">Theme</label>
+        <select id="theme">
+          <option value="auto">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </div>
+  </aside>
+
+  <figure id="legend-card" aria-label="Colour scale">
+    <figcaption id="legend-title">Travel time</figcaption>
+    <div class="legend" id="legend"></div>
+  </figure>
+
+  <div id="tooltip" role="status" hidden></div>
+  <div id="status" role="status" aria-live="polite" hidden></div>
+  <canvas id="heat-canvas" hidden></canvas>
+
+  <script src="vendor/maplibre-gl/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -104,6 +104,22 @@ GRID_MAX_SNAP_M = 400.0  # cells farther than this from any footpath are left bl
 MAX_MINUTES = 180        # routing cut-off
 
 
+# Landmarks for the "travel times to places" table (the map's text alternative).
+PLACES = [
+    ("Raffles Place (CBD)", 103.8515, 1.2840), ("Marina Bay Sands", 103.8607, 1.2834),
+    ("Orchard (ION)", 103.8318, 1.3040), ("Bugis", 103.8559, 1.3002), ("Outram (SGH)", 103.8358, 1.2796),
+    ("HarbourFront / VivoCity", 103.8222, 1.2644), ("Sentosa (Beach Station)", 103.8190, 1.2507),
+    ("one-north", 103.7875, 1.2995), ("NUS (Kent Ridge)", 103.7764, 1.2966), ("Clementi", 103.7650, 1.3150),
+    ("Jurong East", 103.7422, 1.3332), ("NTU", 103.6831, 1.3483), ("Tuas Link", 103.6369, 1.3404),
+    ("Choa Chu Kang", 103.7444, 1.3854), ("Bukit Panjang", 103.7718, 1.3784), ("Woodlands", 103.7864, 1.4370),
+    ("Yishun", 103.8354, 1.4295), ("Ang Mo Kio", 103.8497, 1.3700), ("Bishan", 103.8484, 1.3508),
+    ("Serangoon", 103.8737, 1.3498), ("Sengkang", 103.8950, 1.3916), ("Punggol", 103.9022, 1.4052),
+    ("Paya Lebar", 103.8926, 1.3180), ("Bedok", 103.9300, 1.3240), ("Tampines", 103.9455, 1.3534),
+    ("Pasir Ris", 103.9493, 1.3730), ("Changi Business Park (Expo)", 103.9620, 1.3350),
+    ("Changi Airport", 103.9884, 1.3574),
+]
+
+
 def lta_account_key() -> str | None:
     """Read the LTA DataMall key from the environment or the gitignored .env file."""
     key = os.environ.get("LTA_ACCOUNT_KEY")
