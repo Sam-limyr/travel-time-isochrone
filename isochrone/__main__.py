@@ -17,6 +17,7 @@ def main() -> None:
     p_serve = sub.add_parser("serve", help="run the web app")
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument("--open", action="store_true", help="open the app in the default browser")
 
     args = parser.parse_args()
     if args.cmd == "fetch":
@@ -26,7 +27,12 @@ def main() -> None:
         from .build import build
         build()
     elif args.cmd == "serve":
+        import threading
+        import webbrowser
+
         import uvicorn
+        if args.open:
+            threading.Timer(2.0, webbrowser.open, [f"http://{args.host}:{args.port}/"]).start()
         uvicorn.run("isochrone.server:app", host=args.host, port=args.port)
 
 
