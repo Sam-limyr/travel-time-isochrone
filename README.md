@@ -9,18 +9,34 @@ car mode uses typical traffic for the time of day. Everything runs locally.
 ## Quick start
 
 You need **Python 3.12, 3.13 or 3.14** and **[Poetry](https://python-poetry.org/docs/#installation)** 2.x.
+One launcher, `run.sh`, works on macOS, Linux and Windows. On Windows it runs in Git Bash,
+which comes with [Git for Windows](https://gitforwindows.org/).
 
-| | Install the prerequisites | Run the app |
-|---|---|---|
-| **Windows** | Python from [python.org](https://www.python.org/downloads/), then `py -3.12 -m pip install --user poetry` | Double-click **`run.cmd`**, or `powershell -ExecutionPolicy Bypass -File run.ps1` |
-| **macOS** | `brew install python@3.13 poetry` (or python.org Python + `pipx install poetry`) | `./run.sh` |
+| | Install the prerequisites |
+|---|---|
+| **macOS** | `brew install python@3.13 poetry` (or Python from python.org + `pipx install poetry`) |
+| **Windows** | Python from [python.org](https://www.python.org/downloads/) or `winget install Python.Python.3.13`, then Poetry from Git Bash: `curl -sSL https://install.python-poetry.org \| py -` |
+| **Linux** | Python from your package manager (or pyenv or uv), then `pipx install poetry` |
 
-Both launchers take a port and can skip opening the browser:
-`run.ps1 -Port 8080 -NoBrowser` on Windows, `./run.sh --port 8080 --no-browser` on macOS.
+Then, from the project folder:
+
+```bash
+./run.sh                            # http://127.0.0.1:8000
+./run.sh --port 8080 --no-browser
+```
+
+Press Ctrl-C or close the terminal window to stop the server.
+
+On Windows, run it in Git Bash: the Git Bash app, or VS Code's Git Bash terminal (pick
+*Git Bash* from the menu next to **+** in the terminal panel). From PowerShell, use
+`& "C:\Program Files\Git\bin\bash.exe" run.sh`; a plain `bash` there may be WSL's.
+Double-clicking `run.sh` also works where `.sh` files open with Git Bash (Git for
+Windows' default, unless an editor has claimed the file type).
 
 The first run takes a few minutes:
 
-1. Poetry creates `.venv` in the project and installs the locked dependencies from `poetry.lock`.
+1. Poetry creates `.venv` in the project with the newest Python 3.12–3.14 it can find, and
+   installs the locked dependencies from `poetry.lock`.
 2. The networks are built (about a minute, including a ~40 MB OpenStreetMap download).
 3. The app opens at http://127.0.0.1:8000.
 
@@ -38,13 +54,18 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
 
 ### Troubleshooting
 
-- **Poetry uses the wrong Python** (e.g. macOS's built-in `python3`, which is 3.9): run
-  `poetry env use python3.13` (or `py -3.12` on Windows) once, then `poetry install`.
+- **Poetry uses the wrong Python** when you run it directly (e.g. macOS's built-in
+  `python3`, which is 3.9): run `poetry env use 3.13` once (a version or a path), then
+  `poetry install`. The launcher does this for you, or takes `PYTHON=/path/to/python ./run.sh`.
+- **Windows: `bash run.sh` in PowerShell stops with a WSL message**: with WSL installed,
+  PowerShell's `bash` is WSL's Linux bash, which can't use this folder's Windows
+  environment. Use Git Bash: `& "C:\Program Files\Git\bin\bash.exe" run.sh`.
 - **Windows: `DLL load failed … The filename or extension is too long`**: the project
   sits in a folder whose path is too long for Windows' 260-character limit once `.venv`
   is added. Move it to a shorter path, or enable Windows long-path support.
-- **Port already in use**: start on another port (`run.ps1 -Port 8080`, `./run.sh --port 8080`,
-  or `poetry run isochrone serve --port 8080`).
+- **Port already in use**: start on another port (`./run.sh --port 8080`, or
+  `poetry run isochrone serve --port 8080`). On Windows, a server whose terminal was
+  ended from Task Manager keeps running; end its `python.exe` there too.
 - **Start again from scratch**: delete `.venv` and `data/build`, then run the launcher again.
 
 ## Using the app
@@ -63,9 +84,16 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
 - **Buses / MRT / HDB void-deck shortcuts** can each be switched off to compare.
 - **Parking allowance** (car mode): 0, 2 or 5 minutes added at the destination.
 - **Resolution**: low (250 m), medium (100 m) or high (50 m) grid cells.
-- **Display**: a smooth ramp or five bands (5/10/15/20-minute width), opacity, and
-  overlays for MRT/LRT lines, bus routes and bus stops. Hover for exact times, station
-  names and the bus services on a road.
+- **Display**: a smooth ramp or bands. *Colour up to* (30–150 min) sets where colouring
+  stops, in either style. *Band width* (5–30 min) only sets the step between bands, so
+  15-minute bands up to 90 minutes gives six bands. If the cut-off isn't a multiple of
+  the width, the last band is shorter.
+- **Colours**: Blues (default), Viridis, Plasma, Yellow–orange–red, Yellow–green–blue,
+  Blue–white–orange or Green–yellow–red (hard to read with red–green colour blindness),
+  each reversible. One-way schemes start from their dark end in the light theme and their
+  light end in the dark theme, so colour fades into the basemap with distance.
+- **Opacity** and **overlays** for MRT/LRT lines, bus routes and bus stops. Hover for exact
+  times, station names and the bus services on a road.
 - The **Reachable area** and **Travel time to places** tables give the same information
   as text. Settings, start point and map view are kept in the URL, so links can be shared.
 
@@ -211,14 +239,14 @@ isochrone/
   build.py       assembles networks, void-deck links, grids and overlays -> data/build
   engine.py      per-request edge weights, Dijkstra, grid sampling, itineraries
   server.py      FastAPI app (API + static front end)
-web/             index.html, app.js, style.css, vendored MapLibre GL JS 5.24
+web/             index.html, app.js, palettes.js (colour schemes), style.css,
+                 vendored MapLibre GL JS 5.24
 data/raw/        cached public datasets (committed)
 data/manual/     hand-curated inputs (MRT interchange timings)
 scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
-run.cmd, run.ps1 Windows launcher
-run.sh           macOS/Linux launcher
+run.sh           launcher for macOS, Linux and Windows (Git Bash)
 ```
 
 Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) are all in
@@ -273,5 +301,7 @@ OpenStreetMap contributors, available under the
 [ODbL](https://www.openstreetmap.org/copyright). Basemap © OneMap / Singapore Land
 Authority, or © Esri. Bus route lines are from
 [cheeaun/sgbusdata](https://github.com/cheeaun/sgbusdata). MapLibre GL JS is BSD-3-Clause
-licensed (`web/vendor/maplibre-gl/LICENSE.txt`). The MRT interchange timings are
+licensed (`web/vendor/maplibre-gl/LICENSE.txt`). The Viridis and Plasma colour schemes
+come from matplotlib (CC0); the ColorBrewer schemes are © Cynthia Brewer, Mark Harrower
+and The Pennsylvania State University (Apache-2.0). The MRT interchange timings are
 community-measured (Reddit).

@@ -3,7 +3,5 @@
 data/raw/** -diff
 web/vendor/** -text -diff
 
-# launchers must keep their native line endings on every checkout
+# the launcher must keep LF line endings on every checkout (bash rejects CRLF)
 *.sh text eol=lf
-*.ps1 text eol=crlf
-*.cmd text eol=crlf
