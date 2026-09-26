@@ -1,0 +1,3 @@
+*.zip binary
+*.json -diff
+data/raw/** -diff

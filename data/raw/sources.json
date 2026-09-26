@@ -1,0 +1,42 @@
+{
+  "busrouter": {
+    "fetched_at": "2026-09-26T00:35:00+00:00",
+    "last_updated": "2026-09-01T01:00:31.345Z",
+    "licence": "Route lines from github.com/cheeaun/sgbusdata (derived from LTA data)",
+    "url": "https://data.busrouter.sg/v1/"
+  },
+  "hdb_buildings": {
+    "count": 13447,
+    "fetched_at": "2026-09-26T00:36:18+00:00",
+    "licence": "Singapore Open Data Licence v1.0 (HDB via data.gov.sg)",
+    "url": "https://data.gov.sg/datasets/d_16b157c52ed637edd6ba1232e026258d/view"
+  },
+  "land_boundary": {
+    "fetched_at": "2026-09-26T00:44:05+00:00",
+    "licence": "Singapore Open Data Licence v1.0 (URA via data.gov.sg)",
+    "url": "https://data.gov.sg/datasets/d_bf4d24df9129d5a8ff8cf82e20959ee0/view"
+  },
+  "lta_datamall": {
+    "counts": {
+      "bus_route_stops": 26842,
+      "bus_service_directions": 802,
+      "bus_stops": 5209
+    },
+    "datasets": [
+      "BusStops",
+      "BusServices",
+      "BusRoutes",
+      "GTFSScheduleTrain"
+    ],
+    "fetched_at": "2026-09-26T00:32:59+00:00",
+    "licence": "Singapore Open Data Licence v1.0 (contains information from LTA DataMall)",
+    "train_gtfs_timestamp": "2026-09-26T08:30:49+08:00",
+    "url": "https://datamall2.mytransport.sg/ltaodataservice/"
+  },
+  "openstreetmap": {
+    "fetched_at": "2026-09-26T00:34:26+00:00",
+    "last_modified": "Fri, 25 Sep 2026 01:01:23 GMT",
+    "licence": "ODbL 1.0, (c) OpenStreetMap contributors",
+    "url": "http://download.openstreetmap.fr/extracts/asia/singapore-latest.osm.pbf"
+  }
+}
