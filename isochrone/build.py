@@ -189,7 +189,7 @@ def build(day: date | None = None) -> None:
     walk_major = (walk.components() >= MAJOR_COMPONENT) & shapely.contains_xy(on_land, walk.x, walk.y)
     scc = drive.components("strong")
     drive_major = (scc == scc.max()) & shapely.contains_xy(on_land, drive.x, drive.y)
-    _log(t0, f"{len(vu) // 2} void-deck links across {n_blocks} HDB blocks; "
+    _log(t0, f"{len(vu) // 2} void-deck links from {n_blocks} HDB footprints; "
              f"{walk_major.sum()} routable walk nodes, {drive_major.sum()} drive nodes")
 
     walk_ids = np.nonzero(walk_major)[0]

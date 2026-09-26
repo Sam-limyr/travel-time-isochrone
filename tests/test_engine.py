@@ -100,3 +100,7 @@ def test_invalid_requests_raise(engine):
         engine.isochrone(Request(lon=RAFFLES[0], lat=RAFFLES[1], band="night"))
     with pytest.raises(ValueError):
         engine.isochrone(Request(lon=103.70, lat=1.10))  # at sea, far from any footpath
+    with pytest.raises(ValueError):
+        engine.isochrone(Request(lon=103.7650, lat=1.4620))  # Johor Bahru, across the Causeway
+    with pytest.raises(ValueError):
+        engine.route(Request(lon=RAFFLES[0], lat=RAFFLES[1]), 103.7650, 1.4620)

@@ -26,7 +26,6 @@ const ESRI_ATTR = 'Grey canvas &copy; <a href="https://www.esri.com/" target="_b
 const esriTiles = (layer) => [`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${layer}/MapServer/tile/{z}/{y}/{x}`];
 const DATA_ATTR = 'Travel data: LTA DataMall, HDB, URA (Singapore Open Data Licence) | ' +
   '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">&copy; OpenStreetMap contributors</a>';
-const EMPTY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const SG_BOUNDS = [103.6, 1.16, 104.09, 1.47];
 const DEFAULT_ORIGIN = { lon: 103.8515, lat: 1.2840 };  // Raffles Place
 const LINE_NAMES = {
@@ -55,7 +54,7 @@ const state = {
 
 let meta = null, map = null, grid = null, lastResult = null;
 let reqSeq = 0, routeSeq = 0, busyTimer = null;
-let originMarker = null, destMarker = null;
+let originMarker = null, destMarker = null, lastGoodOrigin = null;
 let lineColours = {};
 const loadedOverlays = new Set();
 
@@ -296,8 +295,10 @@ function initMap() {
 }
 
 function addLayers() {
+  const blank = document.createElement("canvas");
+  blank.width = blank.height = 1;  // fully transparent until the first result arrives
   map.addSource("heat", {
-    type: "image", url: EMPTY_PNG,
+    type: "image", url: blank.toDataURL(),
     coordinates: [[SG_BOUNDS[0], SG_BOUNDS[3]], [SG_BOUNDS[2], SG_BOUNDS[3]], [SG_BOUNDS[2], SG_BOUNDS[1]], [SG_BOUNDS[0], SG_BOUNDS[1]]],
   });
   map.addLayer({ id: "heat", type: "raster", source: "heat", paint: { "raster-opacity": state.opacity, "raster-resampling": "linear", "raster-fade-duration": 0 } });
@@ -435,12 +436,19 @@ async function compute() {
     if (seq !== reqSeq) return;
     if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
     lastResult = body;
+    lastGoodOrigin = { ...state.origin };
     grid = decodeGrid(body.grid);
     showStatus("");
     render(); renderLegend(); updateTables();
     if (state.dest) fetchRoute();
   } catch (err) {
-    if (seq === reqSeq) showStatus(err.message, true, 6000);
+    if (seq === reqSeq) {
+      showStatus(err.message, true, 6000);
+      if (lastGoodOrigin) {  // keep the pin on the point the heatmap was computed from
+        state.origin = { ...lastGoodOrigin };
+        setOriginMarker(); writeHash();
+      }
+    }
   } finally {
     if (seq === reqSeq) { clearTimeout(busyTimer); applyHeatOpacity(false); }
   }

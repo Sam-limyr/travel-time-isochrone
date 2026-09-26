@@ -22,6 +22,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 
 import numpy as np
+import shapely
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
@@ -31,7 +32,8 @@ from . import config, geo, osm, transit
 EPS = 1e-3          # seconds; stands in for zero-cost edges (explicit zeros are fragile in sparse graphs)
 OFF = 1e9           # weight of a disabled edge
 ORIGIN_K = 4        # the clicked point connects to this many nearby network nodes
-ORIGIN_MAX_M = 1500.0
+ORIGIN_MAX_M = 1000.0
+LAND_MARGIN_M = 150.0  # points this far off the URA coastline still count as land (piers, new reclamation)
 NO_DATA, UNREACHED = 65535, 65534  # grid encoding; other values are tenths of a minute
 
 # edge kinds in the public-transport graph
@@ -123,6 +125,12 @@ class Engine:
         stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))
         self.station_names = {code: f["properties"]["name"] for f in stations["features"]
                               for code in f["properties"]["codes"].split(" / ")}
+        self.land = geo.land_polygon_xy().buffer(LAND_MARGIN_M)
+        shapely.prepare(self.land)
+
+    def _check_on_land(self, x: float, y: float) -> None:
+        if not shapely.contains_xy(self.land, x, y):
+            raise ValueError("Pick a point on Singapore's land (the sea and Johor are outside the network).")
 
     # --- graph assembly ---------------------------------------------------------
 
@@ -253,6 +261,7 @@ class Engine:
         key = (req.mode, round(req.lon, 6), round(req.lat, 6), req.band, req.wait, req.walk_kmh,
                req.bus, req.rail, req.voiddeck)
         x, y = (float(c) for c in geo.to_xy(req.lon, req.lat))
+        self._check_on_land(x, y)
         if key in self._cache:
             self._cache.move_to_end(key)
             dist, pred, snap_m = self._cache[key]
@@ -324,7 +333,8 @@ class Engine:
         dist, pred, x, y, _ = self._search(req)
         v = req.walk_kmh / 3.6
         tx, ty = (float(c) for c in geo.to_xy(to_lon, to_lat))
-        tree, ids = (self.walk_tree, self.walk_ids) if req.mode == "transit" else (self.drive_tree, self.drive_ids)
+        self._check_on_land(tx, ty)
+        tree, ids =(self.walk_tree, self.walk_ids) if req.mode == "transit" else (self.drive_tree, self.drive_ids)
         d, i = tree.query([tx, ty], k=ORIGIN_K)
         cand = dist[ids[i]] + d * config.STRAIGHT_LINE_DETOUR / v
         best = int(np.argmin(cand))
