@@ -110,6 +110,26 @@
         <div id="route"></div>
       </section>
 
+      <section id="key-section" hidden>
+        <h2>Key destinations</h2>
+        <p class="key-total"><strong id="key-total"></strong><small>weighted average from the start point</small></p>
+        <table class="data" id="key-groups">
+          <thead><tr><th scope="col">Group</th><th scope="col" class="num">Weight</th><th scope="col" class="num">Minutes</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <details class="key-list">
+          <summary id="key-count">All destinations</summary>
+          <table class="data" id="key-items">
+            <thead><tr><th scope="col">Station</th><th scope="col" class="num">Weight</th><th scope="col" class="num">Minutes</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </details>
+        <p class="note" id="key-unreached" hidden></p>
+        <p class="note" id="key-skipped" hidden></p>
+        <p class="note">Sample weights for MRT stations, from the <i>the-fastest-journey</i> project.
+          Edit <code>data/manual/key_destinations.csv</code> to use your own places.</p>
+      </section>
+
       <section>
         <h2>Reachable area</h2>
         <table class="data" id="area-table">
@@ -153,6 +173,9 @@
   <figure id="legend-card" aria-label="Colour scale">
     <figcaption id="legend-title">Travel time</figcaption>
     <div class="legend" id="legend"></div>
+    <button type="button" class="key-score" id="key-score" hidden title="Show the key destinations">
+      <span>Key destinations, weighted average</span><strong id="key-score-value"></strong>
+    </button>
     <details class="coverage" id="coverage" open hidden>
       <summary>
         <span class="coverage-head">Share of Singapore's land <span class="sub" id="coverage-total"></span></span>

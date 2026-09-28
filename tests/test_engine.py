@@ -84,6 +84,21 @@ def test_land_cells_include_land_without_footpaths(engine):
     assert 700 < land_km2 < 800      # URA's outline, reservoirs and offshore islands included
 
 
+def test_key_destinations_score(engine):
+    from isochrone.engine import Request
+    k = iso(engine)["key_destinations"]
+    assert not engine.key_skipped  # every sample station name resolves
+    assert sum(g["weight"] for g in k["groups"]) == pytest.approx(100)
+    assert k["unreachable"] == 0
+    assert next(i for i in k["items"] if i["name"] == "Raffles Place")["minutes"] < 5  # we start there
+    tuas = engine.isochrone(Request(lon=103.6369, lat=1.3404))["key_destinations"]
+    assert tuas["weighted_min"] > k["weighted_min"] + 20
+    # each destination's time is the router's total for that trip
+    item = next(i for i in k["items"] if i["name"] == "Changi Airport")
+    route = engine.route(Request(lon=RAFFLES[0], lat=RAFFLES[1]), item["lon"], item["lat"])
+    assert item["minutes"] == pytest.approx(route["total_s"] / 60, abs=0.1)
+
+
 def test_route_legs_sum_to_total(engine):
     from isochrone.engine import Request
     req = Request(lon=RAFFLES[0], lat=RAFFLES[1])

@@ -200,6 +200,7 @@ function buildControls() {
   });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "auto") applyTheme(); });
   $("#route-clear").addEventListener("click", clearRoute);
+  $("#key-score").addEventListener("click", showKeySection);
   $("#panel-toggle").addEventListener("click", () => {
     const panel = $("#panel");
     const collapsed = !panel.classList.contains("collapsed");
@@ -459,7 +460,7 @@ async function compute() {
     lastGoodOrigin = { ...state.origin };
     grid = decodeGrid(body.grid);
     showStatus("");
-    render(); renderLegend(); updateTables();
+    render(); renderLegend(); updateTables(); renderKeyDestinations();
     if (state.dest) fetchRoute();
   } catch (err) {
     if (seq === reqSeq) {
@@ -789,6 +790,47 @@ function updateTables() {
       el("td", { className: p.minutes === null ? "num muted" : "num" }, p.minutes === null ? "—" : fmtMin(p.minutes)),
       el("td", { className: "actions" }, route, start)));
   }
+}
+
+/* --- key destinations ------------------------------------------------------ */
+
+function renderKeyDestinations() {
+  const k = lastResult && lastResult.key_destinations;
+  const show = !!(k && k.weighted_min !== null);
+  $("#key-section").hidden = !show;
+  $("#key-score").hidden = !show;
+  if (!show) return;
+  // weights are shown as shares, whatever scale the CSV uses
+  const total = k.groups.reduce((s, g) => s + g.weight, 0);
+  const share = (w) => `${+((100 * w) / total).toFixed(1)}%`;
+  const mins = (m) => (m === null ? "—" : fmtMin(m));
+  $("#key-score-value").textContent = `${fmtMin(k.weighted_min)} min`;
+  $("#key-total").textContent = `${fmtMin(k.weighted_min)} min`;
+  $("#key-groups tbody").replaceChildren(...k.groups.map((g) => el("tr", {},
+    el("td", {}, g.name), el("td", { className: "num" }, share(g.weight)), el("td", { className: "num" }, mins(g.minutes)))));
+  const items = [...k.items].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name));
+  $("#key-items tbody").replaceChildren(...items.map((d) => {
+    const route = el("button", { type: "button", className: "link-btn", title: `Route to ${d.name}` }, "Route");
+    route.addEventListener("click", () => { state.dest = { lon: d.lon, lat: d.lat }; setDestMarker(); writeHash(); fetchRoute(); });
+    return el("tr", {},
+      el("td", {}, d.name, el("small", {}, d.group)),
+      el("td", { className: "num" }, share(d.weight)),
+      el("td", { className: d.minutes === null ? "num muted" : "num" }, mins(d.minutes)),
+      el("td", { className: "actions" }, route));
+  }));
+  $("#key-count").textContent = `All ${k.items.length} destinations`;
+  const unreached = $("#key-unreached");
+  unreached.hidden = !k.unreachable;
+  unreached.textContent = `${k.unreachable} of them can't be reached within ${meta.max_minutes} minutes, and count as ${meta.max_minutes}.`;
+  const skipped = meta.key_destinations.skipped;
+  $("#key-skipped").hidden = !skipped.length;
+  $("#key-skipped").textContent = `Skipped, as no station has this name: ${skipped.join(", ")}.`;
+}
+
+function showKeySection() {
+  const panel = $("#panel");
+  if (panel.classList.contains("collapsed")) $("#panel-toggle").click();
+  $("#key-section").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function buildAbout() {

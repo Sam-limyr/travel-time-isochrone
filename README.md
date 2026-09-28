@@ -94,6 +94,12 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   light end in the dark theme, so colour fades into the basemap with distance.
 - **Opacity** and **overlays** for MRT/LRT lines, bus routes and bus stops. Hover for exact
   times, station names and the bus services on a road.
+- **Key destinations**: the weighted average travel time from the start point to a list
+  of important places, shown in the legend card, with a breakdown in the panel by group
+  and by place. The sample list is 36 MRT stations weighted for work (CBD 40%,
+  regional centres 20%), shopping and leisure, nature and the airport, from the
+  sibling *the-fastest-journey* project. Edit
+  [`data/manual/key_destinations.csv`](data/manual/key_destinations.csv) to use your own.
 - **Share of Singapore's land** (in the legend card): how much of the land falls in each
   band, as a bar and a table. The land is URA's outline, 785 km² including reservoirs and
   offshore islands. The last two rows are land beyond the cut-off, and land more than
@@ -247,7 +253,7 @@ isochrone/
 web/             index.html, app.js, palettes.js (colour schemes), style.css,
                  vendored MapLibre GL JS 5.24
 data/raw/        cached public datasets (committed)
-data/manual/     hand-curated inputs (MRT interchange timings)
+data/manual/     hand-curated inputs (MRT interchange timings, key destinations)
 scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
@@ -273,7 +279,7 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
 
 | Endpoint | Parameters |
 |---|---|
-| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`. Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), plus reachable areas. |
+| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`. Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), reachable areas, and `key_destinations` (each place's time, group averages and the weighted average). |
 | `GET /api/route` | Same as above plus `to_lat`, `to_lon`. Returns itinerary legs with times and geometry. |
 | `GET /api/meta` | Bands, options, data sources and build statistics. |
 | `GET /api/overlays/{mrt_lines,mrt_stations,bus_routes,bus_stops}` | GeoJSON. |

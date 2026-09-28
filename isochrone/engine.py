@@ -16,6 +16,7 @@ remaining walk.
 from __future__ import annotations
 
 import base64
+import csv
 import json
 import time
 from collections import OrderedDict
@@ -137,6 +138,7 @@ class Engine:
         stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))
         self.station_names = {code: f["properties"]["name"] for f in stations["features"]
                               for code in f["properties"]["codes"].split(" / ")}
+        self._load_key_destinations(stations)
         land = geo.land_polygon_xy()
         shapely.prepare(land)
         self.land_cells = {name: _land_cells(land, g) for name, g in self.meta["grids"].items()}
@@ -146,6 +148,69 @@ class Engine:
     def _check_on_land(self, x: float, y: float) -> None:
         if not shapely.contains_xy(self.land, x, y):
             raise ValueError("Pick a point on Singapore's land (the sea and Johor are outside the network).")
+
+    def _load_key_destinations(self, stations: dict) -> None:
+        """The weighted places behind the key-destinations score, snapped to both networks.
+        Rows without coordinates name a station; names that match none are skipped."""
+        where = {f["properties"]["name"].casefold(): f["geometry"]["coordinates"] for f in stations["features"]}
+        self.key_dest, self.key_skipped = [], []
+        path = config.KEY_DESTINATIONS
+        if not path.exists():
+            return
+        with path.open(encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                name = r["name"].strip()
+                try:
+                    weight = float(r["weight"])
+                    if r.get("lon") and r.get("lat"):
+                        lon, lat = float(r["lon"]), float(r["lat"])
+                    else:
+                        lon, lat = where.get(name.casefold(), (None, None))
+                except ValueError as exc:
+                    raise ValueError(f"{path.name}: bad weight or coordinates for {name!r}") from exc
+                if lon is None:
+                    self.key_skipped.append(name)
+                    continue
+                self.key_dest.append({"group": r["group"].strip(), "name": name, "weight": weight,
+                                      "lon": lon, "lat": lat})
+        if self.key_dest:
+            pts = np.column_stack(geo.to_xy([r["lon"] for r in self.key_dest], [r["lat"] for r in self.key_dest]))
+            self.key_xy = pts
+            self.key_weight = np.array([r["weight"] for r in self.key_dest])
+            self.key_snap = {}
+            for kind, tree, ids in (("transit", self.walk_tree, self.walk_ids), ("car", self.drive_tree, self.drive_ids)):
+                d, i = tree.query(pts, k=ORIGIN_K)
+                self.key_snap[kind] = (ids[i], d * config.STRAIGHT_LINE_DETOUR)
+
+    def _key_destinations(self, req: Request, dist: np.ndarray, x: float, y: float) -> dict | None:
+        """Travel time from the origin to each key destination, and their weighted average.
+        Destinations beyond the routing cut-off count as the cut-off."""
+        if not self.key_dest:
+            return None
+        v = req.walk_kmh / 3.6
+        nodes, metres = self.key_snap[req.mode]
+        extra = req.parking_min * 60 if req.mode == "car" else 0.0
+        t = (dist[nodes] + metres / v).min(axis=1) + extra
+        direct = np.hypot(self.key_xy[:, 0] - x, self.key_xy[:, 1] - y) * config.STRAIGHT_LINE_DETOUR / v
+        t = np.minimum(t, np.where(direct < 600 / v, direct, np.inf))
+        limit = config.MAX_MINUTES * 60
+        reached = t <= limit
+        minutes = np.where(reached, t, limit) / 60
+        w = self.key_weight
+
+        def average(sel: np.ndarray) -> float | None:
+            return round(float((w[sel] * minutes[sel]).sum() / w[sel].sum()), 1) if w[sel].sum() > 0 else None
+
+        groups = list(dict.fromkeys(r["group"] for r in self.key_dest))
+        in_group = {g: np.array([r["group"] == g for r in self.key_dest]) for g in groups}
+        return {
+            "weighted_min": average(np.ones(len(w), bool)),
+            "unreachable": int((~reached).sum()),
+            "groups": [{"name": g, "weight": round(float(w[in_group[g]].sum()), 2), "minutes": average(in_group[g])}
+                       for g in groups],
+            "items": [r | {"minutes": round(float(m), 1) if ok else None}
+                      for r, m, ok in zip(self.key_dest, minutes, reached)],
+        }
 
     # --- graph assembly ---------------------------------------------------------
 
@@ -338,6 +403,7 @@ class Engine:
                      "data": base64.b64encode(grid.astype("<u2").tobytes()).decode("ascii")},
             "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
             "area_km2": {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)},
+            "key_destinations": self._key_destinations(req, dist, x, y),
             "timing_ms": {"search": round((t1 - t0) * 1000), "grid": round((t2 - t1) * 1000),
                           "cached": info["cached"]},
         }

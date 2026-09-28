@@ -113,6 +113,10 @@ GRID_MAX_SNAP_M = 400.0  # cells farther than this from any footpath are left bl
 MAX_MINUTES = 180        # routing cut-off
 
 
+# Weighted places for the "key destinations" score: group, name, weight, and optional
+# lon/lat (rows without coordinates name an MRT/LRT station). See data/manual/README.md.
+KEY_DESTINATIONS = MANUAL / "key_destinations.csv"
+
 # Landmarks for the "travel times to places" table (the map's text alternative).
 PLACES = [
     ("Raffles Place (CBD)", 103.8515, 1.2840), ("Marina Bay Sands", 103.8607, 1.2834),
