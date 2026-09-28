@@ -38,6 +38,7 @@ const state = {
   dir: "from",  // "from" one start point, or "to" several places (their weighted average)
   origin: null, dest: null,
   places: [],   // [{ lat, lon, w, label }], up to MAX_PLACES
+  tripFrom: null,  // spot whose trips to the places are shown
   mode: "transit", band: "am_peak", wait: "avg", walk: 4.8, res: "med",
   bus: true, rail: true, voiddeck: true, parking: 0,
   style: "smooth", maxMin: 90, bandSize: 15, palette: "blues", reverse: false, opacity: 0.7,
@@ -48,7 +49,7 @@ const state = {
 
 let meta = null, map = null, grid = null, lastResult = null;
 let reqSeq = 0, routeSeq = 0, busyTimer = null;
-let originMarker = null, destMarker = null, lastGoodOrigin = null;
+let originMarker = null, destMarker = null, tripMarker = null, lastGoodOrigin = null;
 let placeMarkers = [], placeParts = [];  // per place: its map pin, and its fetched grid
 const placeGrids = new Map();            // per place and settings: promise of its grid
 let lineColours = {};
@@ -86,6 +87,7 @@ function writeHash() {
   if (state.places.length) {
     p.set("pl", state.places.map((q) => [q.lat.toFixed(5), q.lon.toFixed(5), q.w, encodeURIComponent(q.label)].join(",")).join(";"));
   }
+  if (state.tripFrom) p.set("t", `${state.tripFrom.lat.toFixed(5)},${state.tripFrom.lon.toFixed(5)}`);
   p.set("mode", state.mode); p.set("band", state.band); p.set("wait", state.wait);
   p.set("walk", state.walk); p.set("res", state.res); p.set("park", state.parking);
   p.set("use", (state.bus ? "b" : "") + (state.rail ? "r" : "") + (state.voiddeck ? "v" : ""));
@@ -108,6 +110,7 @@ function readHash() {
   state.view = view.length === 3 && view.every(Number.isFinite) ? view : null;
   state.dest = pt(p.get("d"));
   state.places = parsePlaces(p.get("pl") || "");
+  state.tripFrom = pt(p.get("t"));
   const pick = (k, allowed) => (allowed.includes(p.get(k)) ? p.get(k) : null);
   state.dir = pick("dir", ["from", "to"]) || state.dir;
   state.mode = pick("mode", ["transit", "car"]) || state.mode;
@@ -255,9 +258,9 @@ function syncControlVisibility() {
   document.querySelectorAll(".transit-only").forEach((n) => (n.hidden = !transit));
   document.querySelectorAll(".car-only").forEach((n) => (n.hidden = transit));
   document.querySelectorAll(".to-only").forEach((n) => (n.hidden = !to));
-  $("#route-section").hidden = to || !lastRoute;
+  $("#route-section").hidden = to ? !(state.tripFrom && lastTrips && state.places.length) : !lastRoute;
   $("#hint").textContent = to
-    ? `Click the map to add up to ${MAX_PLACES} places. The map shows the average trip time from everywhere to them.`
+    ? `Click the map to add up to ${MAX_PLACES} places; it shows the average trip time from everywhere to them. Right-click (Ctrl-click on a Mac) a spot for its trips.`
     : "Click the map to set a starting point. Right-click (Ctrl-click on a Mac) for the route to a point.";
   $("#area-title").textContent = to ? "Area by average trip time" : "Reachable area";
   $("#landmarks-title").textContent = to ? "Average trip time from landmarks" : "Travel time to places";
@@ -341,6 +344,7 @@ function initMap() {
     if (!state.origin) state.origin = { ...DEFAULT_ORIGIN };
     setOriginMarker();
     if (state.dest) setDestMarker();
+    if (state.tripFrom) setTripMarker();
     applyDir();
     writeHash();
     compute();
@@ -352,7 +356,7 @@ function initMap() {
   });
   map.on("contextmenu", (e) => {
     e.originalEvent.preventDefault();
-    if (state.dir === "to") return;
+    if (state.dir === "to") { showTripsFrom(e.lngLat); return; }
     state.dest = { lon: e.lngLat.lng, lat: e.lngLat.lat };
     setDestMarker(); writeHash(); fetchRoute();
   });
@@ -565,7 +569,7 @@ async function computePlaces() {
   if (!map) return;
   const seq = ++reqSeq;
   syncPlaceMarkers(); renderPlacesList();
-  if (!state.places.length) { placeParts = []; clearResult(); return; }
+  if (!state.places.length) { placeParts = []; clearResult(); refreshTrips(); return; }
   startBusy(seq);
   try {
     const settled = await Promise.allSettled(state.places.map(placeGrid));
@@ -617,6 +621,7 @@ function combinePlaces() {
   grid = { ...placeParts[0], values: out };
   lastResult = { key_destinations: null };
   render(); renderLegend(); updateTables(); renderKeyDestinations();
+  refreshTrips();
 }
 
 /** Whether the places' weights differ (the average is then a weighted one). */
@@ -725,9 +730,13 @@ function applyDir() {
   const to = state.dir === "to";
   if (originMarker) originMarker.getElement().hidden = to;
   if (destMarker) destMarker.getElement().hidden = to;
-  if (map && map.getLayer("route-line")) {
-    for (const id of ["route-casing", "route-line", "route-walk"]) map.setLayoutProperty(id, "visibility", to ? "none" : "visible");
-    dimOverlays(!to && !!lastRoute);
+  if (tripMarker) tripMarker.getElement().hidden = !to;
+  if (map && map.getSource("route")) {
+    // the route layers carry this view's route, or its trips
+    map.getSource("route").setData({ type: "FeatureCollection", features: [] });
+    dimOverlays(false);
+    if (!to && lastRoute) drawRoute(lastRoute);
+    if (to) refreshTrips();
     hideHover();
   }
   syncPlaceMarkers();
@@ -936,7 +945,8 @@ function hideHover() {
 
 /* --- routes ----------------------------------------------------------------- */
 
-let lastRoute = null;
+let lastRoute = null;  // "from one point": the route from the start to state.dest
+let lastTrips = null;  // "to several places": { key, routes } from state.tripFrom to each place
 
 async function fetchRoute() {
   if (!state.origin || !state.dest) return;
@@ -959,23 +969,31 @@ function legColour(leg) {
   return cssVar("--ink-2");
 }
 
+const routeFeatures = (route) => (route.reachable ? route.legs.filter((l) => l.coords && l.coords.length > 1).map((l) => ({
+  type: "Feature", properties: { type: l.type === "transfer" ? "walk" : l.type, colour: legColour(l) },
+  geometry: { type: "LineString", coordinates: l.coords },
+})) : []);
+
 function drawRoute(route) {
-  const features = route.reachable ? route.legs.filter((l) => l.coords && l.coords.length > 1).map((l) => ({
-    type: "Feature", properties: { type: l.type === "transfer" ? "walk" : l.type, colour: legColour(l) },
-    geometry: { type: "LineString", coordinates: l.coords },
-  })) : [];
+  const features = routeFeatures(route);
   map.getSource("route").setData({ type: "FeatureCollection", features });
   dimOverlays(features.length > 0);
 
   const box = $("#route");
   box.replaceChildren();
+  $("#route-title").textContent = "Route";
   $("#route-section").hidden = false;
   if (!route.reachable) {
     box.append(el("p", { className: "note" }, `Not reachable within ${meta.max_minutes} minutes with these settings.`));
     return;
   }
   const how = state.mode === "car" ? "by car" : "by public transport";
-  box.append(el("p", { className: "total" }, `${fmtMin(route.total_s / 60)} min`, el("small", {}, `${how}, ${bandLabel(state.band)}`)));
+  box.append(el("p", { className: "total" }, `${fmtMin(route.total_s / 60)} min`, el("small", {}, `${how}, ${bandLabel(state.band)}`)),
+    legList(route));
+}
+
+/** A route's legs as a list: mode badge, what happens, minutes. */
+function legList(route) {
   const list = el("ol");
   for (const leg of route.legs) {
     let badge, detail;
@@ -1004,7 +1022,88 @@ function drawRoute(route) {
     }
     list.append(el("li", {}, badge, detail, el("span", { className: "mins" }, `${fmtMin(leg.seconds / 60)}′`)));
   }
-  box.append(list);
+  return list;
+}
+
+/* Trips: in the several-places view, a right-click shows the itinerary from that
+   spot to each place, and their weighted average (the heatmap's value there). */
+
+const tripsKey = () => JSON.stringify([state.tripFrom, state.places.map((q) => [q.lat, q.lon]), settingsKey()]);
+
+async function fetchTrips() {
+  if (!state.tripFrom) return;
+  if (!state.places.length) { showStatus("Add a place first: click the map.", true, 4000); return; }
+  const seq = ++routeSeq, key = tripsKey(), from = state.tripFrom;
+  try {
+    // one search from the spot serves every trip: the server reuses it
+    const routes = await Promise.all(state.places.map(async (q) => {
+      const res = await fetch(`/api/route?${apiParams(from, { to_lat: q.lat, to_lon: q.lon })}`);
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+      return body;
+    }));
+    if (seq !== routeSeq) return;
+    lastTrips = { key, routes };
+    drawTrips();
+  } catch (err) {
+    if (seq === routeSeq) showStatus(`Trips: ${err.message}`, true, 5000);
+  }
+}
+
+/** Redraw the trips if they still match the places, or fetch them again. */
+function refreshTrips() {
+  if (state.dir !== "to" || !state.tripFrom) return;
+  if (!state.places.length) {
+    map.getSource("route").setData({ type: "FeatureCollection", features: [] });
+    dimOverlays(false);
+    $("#route-section").hidden = true;
+  } else if (lastTrips && lastTrips.key === tripsKey()) {
+    drawTrips();
+  } else {
+    fetchTrips();
+  }
+}
+
+function drawTrips() {
+  const { routes } = lastTrips;
+  const features = routes.flatMap(routeFeatures);
+  map.getSource("route").setData({ type: "FeatureCollection", features });
+  dimOverlays(features.length > 0);
+  const weights = state.places.map((q) => q.w), total = weights.reduce((a, b) => a + b, 0);
+  const complete = routes.every((r, k) => r.reachable || !weights[k]);
+  const avg = total > 0 && complete ? routes.reduce((s, r, k) => s + (weights[k] ? weights[k] * r.total_s : 0), 0) / total / 60 : null;
+  const how = state.mode === "car" ? "by car" : "by public transport", weighted = placesWeighted();
+  $("#route-title").textContent = "Trips from here";
+  $("#route-section").hidden = false;
+  $("#route").replaceChildren(
+    el("p", { className: "total" }, avg === null ? "—" : `${fmtMin(avg)} min`,
+      el("small", {}, `${weighted ? "weighted average" : "average"}, ${how}, ${bandLabel(state.band)}`)),
+    ...routes.map((r, k) => {
+      const q = state.places[k];
+      const trip = el("details", { className: q.w === 0 ? "trip off" : "trip" }, el("summary", {},
+        el("span", { className: "pin-num" }, String(k + 1)),
+        el("span", { className: "trip-name" }, `${q.label}${weighted ? ` ×${q.w}` : ""}`),
+        el("span", { className: "mins" }, r.reachable ? `${fmtMin(r.total_s / 60)} min` : "not reachable")));
+      if (r.reachable) trip.append(legList(r));
+      return trip;
+    }));
+}
+
+function setTripMarker() {
+  if (!tripMarker) {
+    tripMarker = new maplibregl.Marker({ element: el("div", { className: "pin dest", title: "Trips from here (drag to move)" }), draggable: true })
+      .setLngLat([state.tripFrom.lon, state.tripFrom.lat]).addTo(map);
+    tripMarker.on("dragend", () => {
+      const p = tripMarker.getLngLat();
+      state.tripFrom = { lon: p.lng, lat: p.lat }; writeHash(); fetchTrips();
+    });
+  }
+  tripMarker.setLngLat([state.tripFrom.lon, state.tripFrom.lat]);
+}
+
+function showTripsFrom(lngLat) {
+  state.tripFrom = { lon: lngLat.lng, lat: lngLat.lat };
+  setTripMarker(); writeHash(); fetchTrips();
 }
 
 function dimOverlays(dim) {
@@ -1015,8 +1114,13 @@ function dimOverlays(dim) {
 }
 
 function clearRoute() {
-  state.dest = null; lastRoute = null;
-  if (destMarker) { destMarker.remove(); destMarker = null; }
+  if (state.dir === "to") {
+    state.tripFrom = null; lastTrips = null;
+    if (tripMarker) { tripMarker.remove(); tripMarker = null; }
+  } else {
+    state.dest = null; lastRoute = null;
+    if (destMarker) { destMarker.remove(); destMarker = null; }
+  }
   map.getSource("route").setData({ type: "FeatureCollection", features: [] });
   dimOverlays(false);
   $("#route-section").hidden = true;
@@ -1038,7 +1142,7 @@ function updateTables() {
   const cellKm2 = (grid.res_m / 1000) ** 2;
   $("#area-table tbody").replaceChildren(...thresholds.map((m, k) => el("tr", {},
     el("td", {}, `${m} min`),
-    el("td", { className: "num" }, `${(within[k] * cellKm2).toFixed(1)} km²`),
+    el("td", { className: "num" }, `${fmtKm2(within[k] * cellKm2)} km²`),
     el("td", { className: "num" }, fmtPct((100 * within[k]) / grid.land_cells)))));
   const t = lastResult.timing_ms, n = state.places.length;
   $("#timing").textContent = t
@@ -1057,7 +1161,8 @@ function updateTables() {
   };
   $("#places-table tbody").replaceChildren(...rows.map((p) => {
     const actions = state.dir === "to"
-      ? [button("Add", `Add ${p.name} as a place`, () => addPlace({ lng: p.lon, lat: p.lat }))]
+      ? [button("Trips", `Trips from ${p.name} to your places`, () => showTripsFrom({ lng: p.lon, lat: p.lat })),
+        button("Add", `Add ${p.name} as a place`, () => addPlace({ lng: p.lon, lat: p.lat }))]
       : [button("Route", `Route to ${p.name}`, () => { state.dest = { lon: p.lon, lat: p.lat }; setDestMarker(); writeHash(); fetchRoute(); }),
         button("Start", `Start from ${p.name}`, () => {
           state.origin = { lon: p.lon, lat: p.lat }; setOriginMarker(); writeHash(); compute();

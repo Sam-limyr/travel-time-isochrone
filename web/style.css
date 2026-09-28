@@ -211,6 +211,15 @@ h2 .link-btn { margin-left: auto; text-transform: none; letter-spacing: 0; font-
 #route .mins { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
 #route .detail { color: var(--ink-2); line-height: 1.35; }
 #route .detail b { color: var(--ink); font-weight: 600; }
+/* trips from a spot to each place: one collapsible itinerary per place */
+#route details.trip { border-top: 1px solid var(--grid); padding: 5px 0; }
+#route details.trip summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-size: 13px; }
+#route details.trip summary::-webkit-details-marker { display: none; }
+#route details.trip summary::after { content: "▸"; color: var(--muted); font-size: 11px; }
+#route details.trip[open] summary::after { content: "▾"; }
+#route .trip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#route details.trip.off { opacity: 0.5; }
+#route details.trip ol { margin-top: 4px; padding-left: 28px; }
 .badge { display: inline-block; min-width: 40px; text-align: center; padding: 2px 6px; border-radius: 4px; font-size: 11.5px; font-weight: 700;
          color: #fff; background: var(--ink-2); }
 .badge.walk { background: transparent; color: var(--ink-2); border: 1px solid var(--baseline); font-weight: 500; }
