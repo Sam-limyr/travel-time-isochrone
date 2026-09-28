@@ -66,6 +66,8 @@ function debounce(fn, ms) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+const writeHashSoon = debounce(() => writeHash(), 400);  // while typing names and weights
+
 function showStatus(text, isError = false, ms = 0) {
   const s = $("#status");
   s.textContent = text;
@@ -235,6 +237,7 @@ function buildControls() {
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "auto") applyTheme(); });
   $("#route-clear").addEventListener("click", clearRoute);
   $("#key-score").addEventListener("click", showKeySection);
+  $("#my-places-example").addEventListener("click", loadExample);
   $("#panel-toggle").addEventListener("click", () => {
     const panel = $("#panel");
     const collapsed = !panel.classList.contains("collapsed");
@@ -588,15 +591,18 @@ async function computePlaces() {
   }
 }
 
+const NO_WEIGHT = "Give at least one place a weight above 0.";
+
 /** Each cell's weighted average of its travel times to the places; instant, so weights apply live. */
 function combinePlaces() {
   if (!placeParts.length || placeParts.length !== state.places.length) return;
   const weights = state.places.map((q) => q.w), total = weights.reduce((a, b) => a + b, 0);
   if (!(total > 0)) {
     clearResult();
-    showStatus("Give at least one place a weight above 0.", true, 5000);
+    showStatus(NO_WEIGHT, true, 5000);
     return;
   }
+  if ($("#status").textContent === NO_WEIGHT) showStatus("");
   const n = placeParts[0].values.length, out = new Uint16Array(n);
   for (let i = 0; i < n; i++) {
     let sum = 0, code = 0;
@@ -611,6 +617,11 @@ function combinePlaces() {
   grid = { ...placeParts[0], values: out };
   lastResult = { key_destinations: null };
   render(); renderLegend(); updateTables(); renderKeyDestinations();
+}
+
+/** Whether the places' weights differ (the average is then a weighted one). */
+function placesWeighted() {
+  return state.places.some((q) => q.w !== state.places[0].w);
 }
 
 function nextPlaceLabel() {
@@ -650,19 +661,63 @@ function syncPlaceMarkers() {
     node.textContent = String(i + 1);
     node.title = `${q.label} (drag to move)`;
     node.hidden = state.dir !== "to";
+    node.classList.toggle("off", q.w === 0);  // a zero weight leaves the place out of the average
   });
 }
 
+// the example from the brief: two people's workplaces and a place they go together
+const EXAMPLE_PLACES = [
+  { label: "Work (you)", lat: 1.28400, lon: 103.85150, w: 5 },      // Raffles Place
+  { label: "Work (partner)", lat: 1.29950, lon: 103.78750, w: 5 },  // one-north
+  { label: "Weekend park", lat: 1.28160, lon: 103.86360, w: 2 },    // Gardens by the Bay
+];
+
+let listedPlaces = [];  // the place objects the list's rows were built for
+
+/** The places list: a name and a weight per place, both editable in place. */
 function renderPlacesList() {
-  $("#my-places-list").replaceChildren(...state.places.map((q, i) => {
-    const remove = el("button", { type: "button", className: "icon-btn small", title: `Remove ${q.label}` }, "×");
-    remove.setAttribute("aria-label", `Remove ${q.label}`);
-    remove.addEventListener("click", () => removePlace(i));
-    return el("li", {}, el("span", { className: "pin-num" }, String(i + 1)),
-      el("span", { className: "place-label" }, q.label), remove);
-  }));
+  const same = listedPlaces.length === state.places.length && listedPlaces.every((q, i) => q === state.places[i]);
+  if (!same) {  // rebuild only when places come or go, so typing keeps its focus
+    listedPlaces = [...state.places];
+    $("#my-places-list").replaceChildren(...state.places.map((q, i) => {
+      const name = el("input", { type: "text", className: "place-name", value: q.label, maxLength: 30 });
+      name.setAttribute("aria-label", `Name of place ${i + 1}`);
+      name.addEventListener("input", () => { q.label = name.value.trim() || `Place ${i + 1}`; syncPlaceMarkers(); writeHashSoon(); });
+      const weight = el("input", { type: "number", className: "place-weight", value: q.w, min: 0, max: 99, step: 0.5 });
+      weight.setAttribute("aria-label", `Weight of place ${i + 1}`);
+      weight.addEventListener("input", () => {
+        const w = weight.value === "" ? NaN : Number(weight.value);
+        if (!(w >= 0 && w <= 99)) return;  // mid-edit or out of range: keep the last good weight
+        q.w = w;
+        syncPlaceMarkers(); updatePlaceShares(); combinePlaces(); writeHashSoon();
+      });
+      const remove = el("button", { type: "button", className: "icon-btn small", title: "Remove this place" }, "×");
+      remove.setAttribute("aria-label", `Remove place ${i + 1}`);
+      remove.addEventListener("click", () => removePlace(i));
+      return el("li", {}, el("span", { className: "pin-num" }, String(i + 1)), name,
+        el("label", { className: "weight", title: "Weight: how much this place counts" }, "×", weight),
+        el("span", { className: "place-share" }), remove);
+    }));
+  }
+  updatePlaceShares();
   $("#my-places-empty").hidden = state.places.length > 0;
+  $("#my-places-weights").hidden = state.places.length < 2;
   $("#my-places-full").hidden = state.places.length < MAX_PLACES;
+}
+
+/** Each place's share of the total weight, i.e. its pull on the average. */
+function updatePlaceShares() {
+  const total = state.places.reduce((s, q) => s + q.w, 0);
+  $("#my-places-list").querySelectorAll("li").forEach((li, i) => {
+    const q = state.places[i];
+    li.classList.toggle("off", q.w === 0);
+    li.querySelector(".place-share").textContent = total > 0 ? `${Math.round((100 * q.w) / total)}%` : "–";
+  });
+}
+
+function loadExample() {
+  state.places = EXAMPLE_PLACES.map((q) => ({ ...q }));
+  writeHash(); compute();
 }
 
 /** Show the markers, route and panel sections of the current view. */
@@ -756,7 +811,8 @@ function renderLegend() {
     box.append(sw, axis);
   }
   const to = state.dir === "to";
-  box.append(el("div", { className: "caption" }, to ? "Average minutes to your places · " : "Minutes from the start · ",
+  const caption = !to ? "Minutes from the start · " : placesWeighted() ? "Weighted average minutes to your places · " : "Average minutes to your places · ";
+  box.append(el("div", { className: "caption" }, caption,
     el("span", { className: "nodata" }), `over ${cap}`));
   const how = state.mode === "car" ? "by car" : "by public transport";
   $("#legend-title").textContent = meta ? `${to ? "Average trip time" : "Travel time"} ${how} · ${bandLabel(state.band)}` : "Travel time";
@@ -838,13 +894,16 @@ function onHover(e) {
   tip.replaceChildren();
   if (cell && cell.v !== NO_DATA) {
     const mins = (v) => (v >= UNREACHED ? `over ${meta.max_minutes}` : fmtMin(v / 10));
-    const several = state.dir === "to" && state.places.length > 1;
-    tip.append(el("strong", {}, `${cell.v === UNREACHED ? "Over " + meta.max_minutes : fmtMin(cell.v / 10)} min${several ? " on average" : ""}`));
+    const several = state.dir === "to" && state.places.length > 1, weighted = placesWeighted();
+    tip.append(el("strong", {}, `${cell.v === UNREACHED ? "Over " + meta.max_minutes : fmtMin(cell.v / 10)} min${several ? (weighted ? " weighted average" : " on average") : ""}`));
     tip.append(el("span", { className: "k" }, `${state.mode === "car" ? "by car" : "by public transport"}, ${bandLabel(state.band)}`));
     if (state.dir === "to" && placeParts.length === state.places.length) {
       // each place's own trip time from here
-      placeParts.forEach((part, k) => tip.append(el("div", { className: "trip" },
-        el("span", { className: "pin-num" }, String(k + 1)), `${state.places[k].label}: ${mins(part.values[cell.i])} min`)));
+      placeParts.forEach((part, k) => {
+        const q = state.places[k];
+        tip.append(el("div", { className: q.w === 0 ? "trip off" : "trip" }, el("span", { className: "pin-num" }, String(k + 1)),
+          `${q.label}${weighted ? ` ×${q.w}` : ""}: ${mins(part.values[cell.i])} min`));
+      });
     }
     map.getSource("hover-cell").setData({ type: "Feature", geometry: { type: "Polygon", coordinates: [cell.ring] }, properties: {} });
   } else {

@@ -77,6 +77,11 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   every spot, the average door-to-door time from there to the places: where to live or
   meet so the trips add up to the least. Hover for each place's own time; drag a numbered
   pin to move it.
+- **Weights and names**: give each place a name and a weight for how much it counts.
+  Trips per week work well: for a couple, *Work (you)* 5, *Work (partner)* 5 and
+  *Weekend park* 2, which is what *try an example* loads. The map shows the weighted
+  average, each place's share of it is listed, and a weight of 0 leaves a place out.
+  Weights apply instantly, with no new search.
 - **Right-click** a point (**Ctrl-click** or two-finger click on a Mac), or use *Route* in the
   places table, to see the fastest itinerary there: walks, bus services, train lines,
   interchanges and waits.
