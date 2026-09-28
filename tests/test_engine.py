@@ -76,6 +76,14 @@ def test_resolutions_agree(engine):
     assert max(times) - min(times) < 6
 
 
+def test_land_cells_include_land_without_footpaths(engine):
+    g = iso(engine)["grid"]
+    mapped = int((np.frombuffer(base64.b64decode(g["data"]), np.uint16) != 65535).sum())
+    land_km2 = g["land_cells"] * (g["res_m"] / 1000) ** 2
+    assert mapped < g["land_cells"]  # forest, airfields etc. are land but not mapped
+    assert 700 < land_km2 < 800      # URA's outline, reservoirs and offshore islands included
+
+
 def test_route_legs_sum_to_total(engine):
     from isochrone.engine import Request
     req = Request(lon=RAFFLES[0], lat=RAFFLES[1])

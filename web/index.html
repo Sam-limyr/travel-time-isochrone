@@ -113,7 +113,7 @@
       <section>
         <h2>Reachable area</h2>
         <table class="data" id="area-table">
-          <thead><tr><th scope="col">Within</th><th scope="col" class="num">Land area</th></tr></thead>
+          <thead><tr><th scope="col">Within</th><th scope="col" class="num">Land area</th><th scope="col" class="num">Share of land</th></tr></thead>
           <tbody></tbody>
         </table>
         <p class="note" id="timing"></p>
@@ -153,6 +153,15 @@
   <figure id="legend-card" aria-label="Colour scale">
     <figcaption id="legend-title">Travel time</figcaption>
     <div class="legend" id="legend"></div>
+    <details class="coverage" id="coverage" open hidden>
+      <summary>
+        <span class="coverage-head">Share of Singapore's land <span class="sub" id="coverage-total"></span></span>
+        <span class="stack" id="coverage-stack" aria-hidden="true"></span>
+      </summary>
+      <div class="coverage-rows">
+        <table><tbody id="coverage-rows"></tbody></table>
+      </div>
+    </details>
   </figure>
 
   <div id="tooltip" role="status" hidden></div>

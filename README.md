@@ -94,6 +94,11 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   light end in the dark theme, so colour fades into the basemap with distance.
 - **Opacity** and **overlays** for MRT/LRT lines, bus routes and bus stops. Hover for exact
   times, station names and the bus services on a road.
+- **Share of Singapore's land** (in the legend card): how much of the land falls in each
+  band, as a bar and a table. The land is URA's outline, 785 km² including reservoirs and
+  offshore islands. The last two rows are land beyond the cut-off, and land more than
+  400 m from any footpath (forest, airfields, military and industrial islands), which
+  the map leaves blank. Rows follow the bands, or the legend's steps in smooth mode.
 - The **Reachable area** and **Travel time to places** tables give the same information
   as text. Settings, start point and map view are kept in the URL, so links can be shared.
 
@@ -268,7 +273,7 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
 
 | Endpoint | Parameters |
 |---|---|
-| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`. Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), plus reachable areas. |
+| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`. Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), plus reachable areas. |
 | `GET /api/route` | Same as above plus `to_lat`, `to_lon`. Returns itinerary legs with times and geometry. |
 | `GET /api/meta` | Bands, options, data sources and build statistics. |
 | `GET /api/overlays/{mrt_lines,mrt_stations,bus_routes,bus_stops}` | GeoJSON. |

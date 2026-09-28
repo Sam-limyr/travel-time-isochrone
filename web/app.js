@@ -535,7 +535,7 @@ function renderLegend() {
   if (state.style === "smooth") {
     const bar = el("div", { className: "bar" });
     bar.style.background = `linear-gradient(to right, ${currentRamp().map(rgbCss).join(", ")})`;
-    const step = cap <= 45 ? 10 : cap <= 100 ? 15 : 30;
+    const step = smoothStep(cap);
     for (let m = 0; m <= cap; m += step) addTick(axis, `${m}`, m / cap);
     box.append(bar, axis);
   } else {
@@ -554,6 +554,58 @@ function renderLegend() {
     `over ${cap}`));
   const how = state.mode === "car" ? "by car" : "by public transport";
   $("#legend-title").textContent = meta ? `Travel time ${how} · ${bandLabel(state.band)}` : "Travel time";
+  renderCoverage();
+}
+
+/* --- share of the island in each band -------------------------------------- */
+
+const smoothStep = (cap) => (cap <= 45 ? 10 : cap <= 100 ? 15 : 30);
+const fmtPct = (p) => (p === 0 ? "0%" : p < 0.1 ? "<0.1%" : `${p.toFixed(1)}%`);
+const fmtKm2 = (a) => (a < 10 ? a.toFixed(1) : Math.round(a).toString());
+
+// Rows follow the scale's steps: the bands, or in smooth mode the legend's labelled intervals.
+function coverageEdges() {
+  if (state.style === "bands") return bandEdges();
+  const edges = [];
+  for (let m = 0; m < state.maxMin; m += smoothStep(state.maxMin)) edges.push(m);
+  return [...edges, state.maxMin];
+}
+
+function renderCoverage() {
+  const box = $("#coverage");
+  box.hidden = !grid;
+  if (!grid) return;
+  const edges = coverageEdges(), step = (edges[1] - edges[0]) * 10, cap = state.maxMin * 10;
+  const counts = new Array(edges.length - 1).fill(0), vals = grid.values;
+  let mapped = 0, over = 0;
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i];
+    if (v === NO_DATA) continue;
+    mapped++;
+    if (v > cap) over++;
+    else counts[Math.min(counts.length - 1, Math.floor(v / step))]++;
+  }
+  const ramp = currentRamp();
+  const colours = state.style === "bands" ? currentBandColours()
+    : counts.map((_, i) => sampleRamp(ramp, (edges[i] + edges[i + 1]) / 2 / state.maxMin));
+  const rows = counts.map((n, i) => ({ n, label: `${edges[i]}–${edges[i + 1]} min`, fill: rgbCss(colours[i]) }));
+  rows.push({ n: over, label: `Over ${state.maxMin} min`, cls: "over" });
+  rows.push({ n: Math.max(0, grid.land_cells - mapped), label: "No footpath nearby", cls: "none",
+    title: "Land more than 400 m from any footpath: forest, reservoirs, airfields, military and industrial islands. It isn't coloured on the map." });
+
+  const land = grid.land_cells, cellKm2 = (grid.res_m / 1000) ** 2;
+  $("#coverage-total").textContent = `${fmtKm2(land * cellKm2)} km²`;
+  const swatch = (r) => { const s = el("span", { className: `sw ${r.cls || ""}` }); if (r.fill) s.style.background = r.fill; return s; };
+  $("#coverage-stack").replaceChildren(...rows.filter((r) => r.n > 0).map((r) => {
+    const seg = el("span", { className: r.cls || "" });
+    if (r.fill) seg.style.background = r.fill;
+    seg.style.flexGrow = r.n;
+    return seg;
+  }));
+  $("#coverage-rows").replaceChildren(...rows.map((r) => el("tr", { title: r.title || "" },
+    el("td", {}, swatch(r), r.label),
+    el("td", { className: "num" }, fmtPct((100 * r.n) / land)),
+    el("td", { className: "num km" }, `${fmtKm2(r.n * cellKm2)} km²`))));
 }
 
 /* --- hover ------------------------------------------------------------------ */
@@ -704,11 +756,16 @@ function clearRoute() {
 
 function updateTables() {
   if (!lastResult || !grid) return;
-  const areaBody = $("#area-table tbody");
-  areaBody.replaceChildren();
-  for (const [m, km2] of Object.entries(lastResult.area_km2)) {
-    areaBody.append(el("tr", {}, el("td", {}, `${m} min`), el("td", { className: "num" }, `${km2.toFixed(1)} km²`)));
+  // counted from the grid on screen, so it also covers averaged grids
+  const thresholds = [15, 30, 45, 60, 90], within = thresholds.map(() => 0), vals = grid.values;
+  for (let i = 0; i < vals.length; i++) {
+    for (let k = 0; k < thresholds.length; k++) if (vals[i] <= thresholds[k] * 10) within[k]++;
   }
+  const cellKm2 = (grid.res_m / 1000) ** 2;
+  $("#area-table tbody").replaceChildren(...thresholds.map((m, k) => el("tr", {},
+    el("td", {}, `${m} min`),
+    el("td", { className: "num" }, `${(within[k] * cellKm2).toFixed(1)} km²`),
+    el("td", { className: "num" }, fmtPct((100 * within[k]) / grid.land_cells)))));
   const t = lastResult.timing_ms;
   $("#timing").textContent = `Computed in ${t.search + t.grid} ms${t.cached ? " (reused search)" : ""} · ${grid.res_m} m grid`;
 
@@ -769,6 +826,7 @@ async function main() {
   applyTheme();
   buildControls();
   buildAbout();
+  if (innerWidth <= 700) $("#coverage").open = false;  // keep the map visible on phones
   renderLegend();
   initMap();
 }

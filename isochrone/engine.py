@@ -101,6 +101,16 @@ class _Csr:
         return dijkstra(graph, directed=True, indices=self.origin, limit=limit, return_predecessors=True)
 
 
+def _land_cells(land, g: dict) -> int:
+    """Cells of grid ``g`` whose centre is on land. The grid itself keeps only those
+    within reach of a footpath; the rest (forest, reservoirs, airfields, military and
+    industrial islands) still count towards the island's area."""
+    col, row = np.meshgrid(np.arange(g["nx"]), np.arange(g["ny"]))
+    cx = g["origin_xy"][0] + (col.ravel() + 0.5) * g["res_m"]
+    cy = g["origin_xy"][1] - (row.ravel() + 0.5) * g["res_m"]
+    return int(shapely.contains_xy(land, cx, cy).sum())
+
+
 class Engine:
     def __init__(self) -> None:
         b = config.BUILD
@@ -127,7 +137,10 @@ class Engine:
         stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))
         self.station_names = {code: f["properties"]["name"] for f in stations["features"]
                               for code in f["properties"]["codes"].split(" / ")}
-        self.land = geo.land_polygon_xy().buffer(LAND_MARGIN_M)
+        land = geo.land_polygon_xy()
+        shapely.prepare(land)
+        self.land_cells = {name: _land_cells(land, g) for name, g in self.meta["grids"].items()}
+        self.land = land.buffer(LAND_MARGIN_M)
         shapely.prepare(self.land)
 
     def _check_on_land(self, x: float, y: float) -> None:
@@ -320,6 +333,7 @@ class Engine:
         minutes = cell_s / 60
         return {
             "grid": {"nx": g["nx"], "ny": g["ny"], "res_m": g["res_m"], "bounds": g["bounds"],
+                     "land_cells": self.land_cells[req.res],
                      "encoding": "uint16 little-endian, tenths of a minute; 65535 = no data, 65534 = unreachable",
                      "data": base64.b64encode(grid.astype("<u2").tobytes()).decode("ascii")},
             "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
