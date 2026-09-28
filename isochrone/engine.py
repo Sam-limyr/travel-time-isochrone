@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import base64
 import csv
+import functools
 import json
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -35,6 +37,7 @@ OFF = 1e9           # weight of a disabled edge
 ORIGIN_K = 4        # the clicked point connects to this many nearby network nodes
 ORIGIN_MAX_M = 1000.0
 LAND_MARGIN_M = 150.0  # points this far off the URA coastline still count as land (piers, new reclamation)
+CACHE_SIZE = 12     # recent searches kept (~4.5 MB each): up to five places plus the start point
 NO_DATA, UNREACHED = 65535, 65534  # grid encoding; other values are tenths of a minute
 
 # edge kinds in the public-transport graph
@@ -55,10 +58,13 @@ class Request:
     rail: bool = True
     voiddeck: bool = True
     parking_min: float = 0.0
+    direction: str = "from"        # "from" the point to everywhere, or "to" the point from everywhere
 
     def validate(self) -> None:
         if self.mode not in ("transit", "car"):
             raise ValueError("mode must be 'transit' or 'car'")
+        if self.direction not in ("from", "to"):
+            raise ValueError("direction must be 'from' or 'to'")
         if self.band not in config.BANDS:
             raise ValueError(f"band must be one of {list(config.BANDS)}")
         if self.wait not in config.WAIT_MODES:
@@ -102,6 +108,27 @@ class _Csr:
         return dijkstra(graph, directed=True, indices=self.origin, limit=limit, return_predecessors=True)
 
 
+def _transposed(u: np.ndarray, v: np.ndarray, n_nodes: int, fwd: _Csr) -> tuple[_Csr, np.ndarray]:
+    """The graph with every edge reversed, and the permutation taking per-edge weights from
+    ``fwd``'s order to its order. A search over it from a point gives each node's time *to* it."""
+    rev = _Csr(v, u, n_nodes)
+    m = len(u)
+    pos = np.empty(m, np.int64)
+    pos[fwd.order[fwd.order < m]] = np.arange(m)  # original edge -> slot in the forward order
+    return rev, pos[rev.order[rev.order < m]].astype(np.int32)
+
+
+def _serialised(method):
+    """Run one engine query at a time. The server answers requests on several threads,
+    and neither GEOS prepared geometries (the land check) nor the search cache are
+    thread-safe: overlapping queries crash the process."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 def _land_cells(land, g: dict) -> int:
     """Cells of grid ``g`` whose centre is on land. The grid itself keeps only those
     within reach of a footpath; the rest (forest, reservoirs, airfields, military and
@@ -129,6 +156,7 @@ class Engine:
         self._build_transit(walk, tr)
         self._build_drive(drive)
         self._cache: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
         for name in ("stop_x", "stop_y", "entrance_x", "entrance_y", "platform_x", "platform_y"):
             setattr(self, name, tr[name].astype(np.float64))
         self.ride_stop, self.ride_pattern = tr["ride_stop"], tr["ride_pattern"]
@@ -263,6 +291,7 @@ class Engine:
 
         u, v = np.concatenate(us), np.concatenate(vs)
         self.t_graph = _Csr(u, v, n_nodes)
+        self.t_graph_rev, self.t_rev_perm = _transposed(u, v, n_nodes, self.t_graph)
         o = self.t_graph.order
         o = o[o < len(u)]  # origin slots sort to the end (origin is the largest node id)
         self.t_kind = np.concatenate(kinds)[o]
@@ -278,7 +307,9 @@ class Engine:
         self.offsets = {"stop": o_stop, "ride": o_ride, "entrance": o_ent, "platform": o_plat, "hop": o_hop}
 
     def _build_drive(self, drive) -> None:
-        self.d_graph = _Csr(drive["u"].astype(np.int64), drive["v"].astype(np.int64), len(self.drive_x))
+        u, v = drive["u"].astype(np.int64), drive["v"].astype(np.int64)
+        self.d_graph = _Csr(u, v, len(self.drive_x))
+        self.d_graph_rev, self.d_rev_perm = _transposed(u, v, len(self.drive_x), self.d_graph)
         o = self.d_graph.order
         o = o[o < len(drive["u"])]
         self.d_len = drive["length"][o].astype(np.float64)
@@ -337,9 +368,10 @@ class Engine:
     # --- queries ----------------------------------------------------------------
 
     def _search(self, req: Request) -> tuple[np.ndarray, np.ndarray, float, float, dict]:
-        """Dijkstra from the request origin, cached: switching resolution, parking
-        allowance or asking for a route reuses the same search."""
-        key = (req.mode, round(req.lon, 6), round(req.lat, 6), req.band, req.wait, req.walk_kmh,
+        """Dijkstra from the request's point, or for direction "to", towards it over the
+        reversed graph (each node's time to reach the point). Cached: switching resolution,
+        parking allowance or asking for a route reuses the same search."""
+        key = (req.mode, req.direction, round(req.lon, 6), round(req.lat, 6), req.band, req.wait, req.walk_kmh,
                req.bus, req.rail, req.voiddeck)
         x, y = (float(c) for c in geo.to_xy(req.lon, req.lat))
         self._check_on_land(x, y)
@@ -349,12 +381,17 @@ class Engine:
             return dist, pred, x, y, {"cached": True, "snap_m": snap_m}
         t0 = time.perf_counter()
         v = req.walk_kmh / 3.6
+        forward = req.direction == "from"
         if req.mode == "transit":
-            tree, ids, graph = self.walk_tree, self.walk_ids, self.t_graph
+            tree, ids = self.walk_tree, self.walk_ids
             weights = self.transit_weights(req)
+            graph, perm = (self.t_graph, None) if forward else (self.t_graph_rev, self.t_rev_perm)
         else:
-            tree, ids, graph = self.drive_tree, self.drive_ids, self.d_graph
+            tree, ids = self.drive_tree, self.drive_ids
             weights = self.drive_weights(req)
+            graph, perm = (self.d_graph, None) if forward else (self.d_graph_rev, self.d_rev_perm)
+        if perm is not None:
+            weights = weights[perm]
         d, i = tree.query([x, y], k=ORIGIN_K)
         if d[0] > ORIGIN_MAX_M:
             raise ValueError("That point is too far from any footpath or road in Singapore.")
@@ -362,7 +399,7 @@ class Engine:
         dist, pred = graph.run(weights, ids[i], d * config.STRAIGHT_LINE_DETOUR / v, config.MAX_MINUTES * 60)
         t2 = time.perf_counter()
         self._cache[key] = (dist, pred, float(d[0]))
-        while len(self._cache) > 8:
+        while len(self._cache) > CACHE_SIZE:
             self._cache.popitem(last=False)
         return dist, pred, x, y, {"cached": False, "snap_m": float(d[0]),
                                   "weights_ms": round((t1 - t0) * 1000), "dijkstra_ms": round((t2 - t1) * 1000)}
@@ -382,6 +419,7 @@ class Engine:
         direct = np.hypot(cx - x, cy - y) * config.STRAIGHT_LINE_DETOUR / v
         return np.minimum(cell_s, np.where(direct < 600 / v, direct, np.inf)), cells
 
+    @_serialised
     def isochrone(self, req: Request) -> dict:
         req.validate()
         t0 = time.perf_counter()
@@ -402,14 +440,16 @@ class Engine:
                      "encoding": "uint16 little-endian, tenths of a minute; 65535 = no data, 65534 = unreachable",
                      "data": base64.b64encode(grid.astype("<u2").tobytes()).decode("ascii")},
             "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
+            "direction": req.direction,
             "area_km2": {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)},
-            "key_destinations": self._key_destinations(req, dist, x, y),
+            "key_destinations": self._key_destinations(req, dist, x, y) if req.direction == "from" else None,
             "timing_ms": {"search": round((t1 - t0) * 1000), "grid": round((t2 - t1) * 1000),
                           "cached": info["cached"]},
         }
 
     # --- itineraries ------------------------------------------------------------
 
+    @_serialised
     def route(self, req: Request, to_lon: float, to_lat: float) -> dict:
         """Fastest itinerary from the request origin to a point, as legs with geometry."""
         req.validate()

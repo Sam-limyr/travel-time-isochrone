@@ -27,9 +27,9 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 def _request(lat: float, lon: float, mode: str, band: str, wait: str, walk_kmh: float, res: str,
-             bus: bool, rail: bool, voiddeck: bool, parking: float) -> Request:
+             bus: bool, rail: bool, voiddeck: bool, parking: float, direction: str = "from") -> Request:
     return Request(lon=lon, lat=lat, mode=mode, band=band, wait=wait, walk_kmh=walk_kmh, res=res,
-                   bus=bus, rail=rail, voiddeck=voiddeck, parking_min=parking)
+                   bus=bus, rail=rail, voiddeck=voiddeck, parking_min=parking, direction=direction)
 
 
 @app.get("/api/meta")
@@ -56,9 +56,10 @@ def meta() -> dict:
 @app.get("/api/isochrone")
 def isochrone(lat: float, lon: float, mode: str = "transit", band: str = "am_peak", wait: str = "avg",
               walk_kmh: float = config.WALK_KMH_DEFAULT, res: str = "med", bus: bool = True, rail: bool = True,
-              voiddeck: bool = True, parking: float = 0) -> dict:
+              voiddeck: bool = True, parking: float = 0, direction: str = "from") -> dict:
     try:
-        return engine.isochrone(_request(lat, lon, mode, band, wait, walk_kmh, res, bus, rail, voiddeck, parking))
+        return engine.isochrone(_request(lat, lon, mode, band, wait, walk_kmh, res, bus, rail, voiddeck, parking,
+                                         direction))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

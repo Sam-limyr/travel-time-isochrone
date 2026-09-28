@@ -21,6 +21,21 @@
 
     <div id="panel-body">
       <section>
+        <h2>Map shows</h2>
+        <div class="seg" role="radiogroup" aria-label="What the map shows" data-name="dir">
+          <label title="Travel time from one starting point to everywhere"><input type="radio" name="dir" value="from" checked><span>From one point</span></label>
+          <label title="Average travel time from everywhere to up to five places"><input type="radio" name="dir" value="to"><span>To several places</span></label>
+        </div>
+      </section>
+
+      <section class="to-only" id="my-places" hidden>
+        <h2>Your places <span class="sub">(up to 5)</span></h2>
+        <ol class="places" id="my-places-list"></ol>
+        <p class="note" id="my-places-empty">Click the map to add a place, such as a workplace or a school.</p>
+        <p class="note" id="my-places-full" hidden>That's five: remove one to add another. Drag a pin to move it.</p>
+      </section>
+
+      <section>
         <h2>Travel by</h2>
         <div class="seg" role="radiogroup" aria-label="Travel mode" data-name="mode">
           <label><input type="radio" name="mode" value="transit" checked><span>Public transport</span></label>
@@ -131,7 +146,7 @@
       </section>
 
       <section>
-        <h2>Reachable area</h2>
+        <h2 id="area-title">Reachable area</h2>
         <table class="data" id="area-table">
           <thead><tr><th scope="col">Within</th><th scope="col" class="num">Land area</th><th scope="col" class="num">Share of land</th></tr></thead>
           <tbody></tbody>
@@ -140,7 +155,7 @@
       </section>
 
       <section>
-        <h2>Travel time to places</h2>
+        <h2 id="landmarks-title">Travel time to places</h2>
         <table class="data" id="places-table">
           <thead><tr><th scope="col">Place</th><th scope="col" class="num">Minutes</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
           <tbody></tbody>

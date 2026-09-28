@@ -72,6 +72,11 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
 
 - **Click** the map to set the start point (or drag the black pin). The heatmap shows the
   door-to-door travel time from there to every 50–250 m cell of land.
+- **To several places** (under *Map shows*): click up to five places, such as workplaces,
+  schools or family, or add them from the landmarks table. The heatmap then shows, for
+  every spot, the average door-to-door time from there to the places: where to live or
+  meet so the trips add up to the least. Hover for each place's own time; drag a numbered
+  pin to move it.
 - **Right-click** a point (**Ctrl-click** or two-finger click on a Mac), or use *Route* in the
   places table, to see the fastest itinerary there: walks, bus services, train lines,
   interchanges and waits.
@@ -164,6 +169,13 @@ time band, with peaks calibrated to LTA's measured peak-hour averages: 55 km/h o
 expressways and 29 km/h on arterial roads in 2025
 ([`data/raw/lta/average_peak_speeds.csv`](data/raw/lta/average_peak_speeds.csv)). The
 start and destination are joined to the nearest road on foot.
+
+**Several places**: trips *to* a place aren't the reverse of trips from it (one-way
+roads and bus loops, waits at the boarding stop, 60 s to enter a station but 45 s to
+leave), so each place gets one search over the reversed graph: every edge flipped, with
+the same weights. That gives every spot's time to the place directly, and it matches the
+router's forward itinerary to within grid rounding. The browser averages the places' grids
+cell by cell, so a new place costs one search (about 0.2 s) and weights apply instantly.
 
 **The grid**: each cell takes the fastest of its four nearest network nodes plus the
 remaining walk (straight line × 1.2). Cells more than 400 m from any footpath (forest
@@ -266,7 +278,7 @@ Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) a
 ## Development
 
 ```bash
-poetry run pytest                                     # 37 unit + integration tests
+poetry run pytest                                     # 41 unit + integration tests
 poetry run python scripts/probe.py "Jurong East MRT"  # times to well-known places from an origin
 poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/data/travel_times_final_20250706.csv
 poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
@@ -279,7 +291,7 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
 
 | Endpoint | Parameters |
 |---|---|
-| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`. Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), reachable areas, and `key_destinations` (each place's time, group averages and the weighted average). |
+| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`, `direction` (`from` the point, the default, or `to` it from everywhere). Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), reachable areas, and `key_destinations` (each place's time, group averages and the weighted average). |
 | `GET /api/route` | Same as above plus `to_lat`, `to_lon`. Returns itinerary legs with times and geometry. |
 | `GET /api/meta` | Bands, options, data sources and build statistics. |
 | `GET /api/overlays/{mrt_lines,mrt_stations,bus_routes,bus_stops}` | GeoJSON. |

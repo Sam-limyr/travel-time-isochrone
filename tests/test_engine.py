@@ -99,6 +99,28 @@ def test_key_destinations_score(engine):
     assert item["minutes"] == pytest.approx(route["total_s"] / 60, abs=0.1)
 
 
+def test_times_to_a_place_match_the_router(engine):
+    from isochrone.engine import Request
+    to = engine.isochrone(Request(lon=RAFFLES[0], lat=RAFFLES[1], direction="to", res="high"))
+    assert to["key_destinations"] is None
+    for lon, lat in PLACES.values():  # searched backwards from Raffles, routed forwards to it
+        route = engine.route(Request(lon=lon, lat=lat), *RAFFLES)
+        assert minutes_at(to, lon, lat) == pytest.approx(route["total_s"] / 60, abs=1.0)
+
+
+def test_overlapping_queries_are_safe():
+    """The server answers on several threads; overlapping queries on a fresh engine used to
+    segfault inside GEOS (the land check)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from isochrone.engine import Engine, Request
+    fresh = Engine()
+    with ThreadPoolExecutor(6) as pool:
+        futures = [pool.submit(fresh.isochrone, Request(lon=lon, lat=lat, direction="to")) for lon, lat in PLACES.values()]
+        futures += [pool.submit(fresh.route, Request(lon=RAFFLES[0], lat=RAFFLES[1]), lon, lat) for lon, lat in PLACES.values()]
+        assert all(f.result() for f in futures)
+
+
 def test_route_legs_sum_to_total(engine):
     from isochrone.engine import Request
     req = Request(lon=RAFFLES[0], lat=RAFFLES[1])
@@ -121,6 +143,8 @@ def test_invalid_requests_raise(engine):
     from isochrone.engine import Request
     with pytest.raises(ValueError):
         engine.isochrone(Request(lon=RAFFLES[0], lat=RAFFLES[1], band="night"))
+    with pytest.raises(ValueError):
+        engine.isochrone(Request(lon=RAFFLES[0], lat=RAFFLES[1], direction="sideways"))
     with pytest.raises(ValueError):
         engine.isochrone(Request(lon=103.70, lat=1.10))  # at sea, far from any footpath
     with pytest.raises(ValueError):
