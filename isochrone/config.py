@@ -28,14 +28,16 @@ BBOX = (103.59, 1.20, 104.05, 1.48)
 # --- Time-of-day bands ----------------------------------------------------------
 # These match the dispatch-frequency bands LTA publishes for buses. The train
 # timetable is sampled over the same windows (seconds after midnight).
+# "rail" picks the column of data/manual/train_frequencies.csv. Operators' train peaks
+# run 07:30–09:30 and 17:30–19:30; the peak bands take peak frequencies throughout.
 BANDS = {
-    "am_peak": {"label": "AM peak", "hours": "06:30–08:30", "lta_freq": "AM_Peak_Freq",
+    "am_peak": {"label": "AM peak", "hours": "06:30–08:30", "lta_freq": "AM_Peak_Freq", "rail": "peak",
                 "window": (6 * 3600 + 1800, 8 * 3600 + 1800)},
-    "midday": {"label": "Midday", "hours": "08:30–17:00", "lta_freq": "AM_Offpeak_Freq",
+    "midday": {"label": "Midday", "hours": "08:30–17:00", "lta_freq": "AM_Offpeak_Freq", "rail": "offpeak",
                "window": (8 * 3600 + 1800, 17 * 3600)},
-    "pm_peak": {"label": "PM peak", "hours": "17:00–19:00", "lta_freq": "PM_Peak_Freq",
+    "pm_peak": {"label": "PM peak", "hours": "17:00–19:00", "lta_freq": "PM_Peak_Freq", "rail": "peak",
                 "window": (17 * 3600, 19 * 3600)},
-    "evening": {"label": "Evening", "hours": "19:00–23:00", "lta_freq": "PM_Offpeak_Freq",
+    "evening": {"label": "Evening", "hours": "19:00–23:00", "lta_freq": "PM_Offpeak_Freq", "rail": "offpeak",
                 "window": (19 * 3600, 23 * 3600)},
 }
 BAND_KEYS = tuple(BANDS)
@@ -116,6 +118,10 @@ MAX_MINUTES = 180        # routing cut-off
 # Weighted places for the "key destinations" score: group, name, weight, and optional
 # lon/lat (rows without coordinates name an MRT/LRT station). See data/manual/README.md.
 KEY_DESTINATIONS = MANUAL / "key_destinations.csv"
+
+# Published train frequencies (minutes between trains) per line section, peak and
+# off-peak: the source of train waits. Sections without a row keep the GTFS timetable's.
+TRAIN_FREQUENCIES = MANUAL / "train_frequencies.csv"
 
 # Landmarks for the "travel times to places" table (the map's text alternative).
 PLACES = [

@@ -13,9 +13,29 @@ def test_parse_headway(raw, expected):
     assert transit.parse_headway(raw) == expected
 
 
-def test_bus_waits_best_avg_worst():
-    assert transit.bus_waits((8, 12)) == [0.0, 300.0, 720.0]
-    assert all(np.isnan(w) for w in transit.bus_waits(None))
+def test_headway_waits_best_avg_worst():
+    assert transit.headway_waits((8, 12)) == [0.0, 300.0, 720.0]
+    assert all(np.isnan(w) for w in transit.headway_waits(None))
+
+
+def test_published_rail_waits_by_section_and_period(tmp_path):
+    table = tmp_path / "freq.csv"
+    table.write_text("line,section,stations,peak_min,offpeak_min,source\n"
+                     "NSL,south,NS13-NS28,2-3,4-5,x\nNSL,north,NS1-NS13,2-5,4-5,x\nEWL,airport,CG,7-12,7-12,x\n",
+                     encoding="utf-8")
+    codes = ["NS12", "NS13", "NS14", "CG", "CG1", "BP1", "BP2"]
+    hop = np.array([[0, 1], [1, 2], [3, 4], [5, 6]])
+    gtfs = np.full((4, 4, 3), 99.0, np.float32)
+    gtfs[1, 3] = np.nan  # no train over NS13 -> NS14 in the evening
+    waits, counts = transit.published_rail_waits(table, codes, hop, gtfs)
+    am, midday, evening = 0, 1, 3
+    assert list(waits[0, am]) == [0, 105, 300]        # NS12-NS13: north section, peak 2-5
+    assert list(waits[1, am]) == [0, 75, 180]         # NS13-NS14: south section, peak 2-3
+    assert list(waits[1, midday]) == [0, 135, 300]    # off-peak 4-5
+    assert np.isnan(waits[1, evening]).all()          # the timetable still decides where trains run
+    assert list(waits[2, am]) == list(waits[2, midday]) == [0, 285, 720]  # airport branch, 7-12 all day
+    assert (waits[3] == 99).all()                     # no row: timetable waits kept
+    assert counts == {"NSL south": 1, "NSL north": 1, "EWL airport": 1}
 
 
 def test_gap_stats_regular_and_bunched():

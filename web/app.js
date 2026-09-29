@@ -1228,12 +1228,23 @@ function buildAbout() {
   );
   const model = el("ul", {},
     el("li", {}, "Public transport: walk along real footpaths (and through HDB void decks), wait, ride, change. One shortest-path search per click."),
-    el("li", {}, "Bus waits come from LTA's published headway ranges per time band; running times from LTA's scheduled times, adjusted for peak traffic."),
-    el("li", {}, "Train waits and running times come from the official timetable (running times calibrated per line, as the feed rounds them up to whole minutes); interchange walks use the Reddit-measured timings, scaled by walking speed."),
+    el("li", {}, "Bus waits come from LTA's published frequency for each service and time band (most run more often in the peaks); running times from LTA's scheduled times, adjusted for peak traffic."),
+    el("li", {}, "Train waits come from each line's published peak and off-peak frequency (below): half the gap between trains on average, the longest gap at worst. Running times come from the official timetable, calibrated per line as the feed rounds them up to whole minutes. Interchange walks use the Reddit-measured timings, scaled by walking speed."),
     el("li", {}, "Car: typical-congestion speeds by road class for the time band, with peaks calibrated to LTA's measured peak-hour averages (no live traffic). The start and end are joined to the road network on foot."),
     el("li", {}, "Limitations: no real-time data; boarding the first of several buses that go your way is not modelled (waits can be pessimistic at busy stops); cross-border and ferry services are excluded."),
   );
   box.append(el("h3", {}, "Data"), sources, el("h3", {}, "Model"), model);
+  if (meta.train_frequencies.length) {
+    // the published frequencies behind train waits (data/manual/train_frequencies.csv)
+    const rows = meta.train_frequencies.map((f) => el("tr", {},
+      el("td", {}, f.section === "whole line" ? f.line : `${f.line}: ${f.section}`),
+      el("td", { className: "num" }, f.peak), el("td", { className: "num" }, f.offpeak)));
+    box.append(el("h3", {}, "Minutes between trains"),
+      el("table", { className: "data" },
+        el("thead", {}, el("tr", {}, el("th", {}, "Line"), el("th", { className: "num" }, "Peak"), el("th", { className: "num" }, "Off-peak"))),
+        el("tbody", {}, ...rows)),
+      el("p", { className: "note" }, "Operators' published frequencies (peak 07:30–09:30 and 17:30–19:30), as listed on SGWiki; LTA quotes 2–3 minutes at peak and 5–7 off-peak network-wide. The Bukit Panjang LRT publishes none, so it uses the timetable's gaps."));
+  }
 }
 
 /* --- start ------------------------------------------------------------------ */

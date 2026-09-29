@@ -161,6 +161,10 @@ class Engine:
             setattr(self, name, tr[name].astype(np.float64))
         self.ride_stop, self.ride_pattern = tr["ride_stop"], tr["ride_pattern"]
         self.platform_line = [transit.line_of(c) for c in self.meta["names"]["platform_code"]]
+        self.rail_sections = {}  # published frequency row -> hops it sets
+        if config.TRAIN_FREQUENCIES.exists():
+            self.tr["hop_wait"], self.rail_sections = transit.published_rail_waits(
+                config.TRAIN_FREQUENCIES, self.meta["names"]["platform_code"], self.tr["hop"], self.tr["hop_wait"])
         self.hop_factor = np.array([config.RAIL_RUNTIME_FACTOR.get(self.platform_line[p], 1.0)
                                     for p in tr["hop"][:, 0]])
         stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))

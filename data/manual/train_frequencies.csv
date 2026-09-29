@@ -1,0 +1,12 @@
+line,section,stations,peak_min,offpeak_min,source
+NSL,Jurong East – Yishun,NS1-NS13,2-5,4-5,SGWiki: North–South Line
+NSL,Yishun – Marina South Pier,NS13-NS28,2-3,4-5,SGWiki: North–South Line
+EWL,Pasir Ris – Joo Koon,EW1-EW29,2-3,4-5,SGWiki: East–West Line
+EWL,Joo Koon – Tuas Link,EW29-EW33,4-6,8-10,SGWiki: East–West Line
+EWL,Tanah Merah – Changi Airport,CG,7-12,7-12,SGWiki: East–West Line
+NEL,whole line,NE,2-4,5-6,SGWiki: North East Line
+CCL,whole line,CC CE,3-5,5-7,SGWiki: Circle Line
+DTL,whole line,DT,3-4,5-6,SGWiki: Downtown Line
+TEL,whole line,TE,3-5,5-6,SGWiki: Thomson–East Coast Line
+SKLRT,whole line,STC SE SW,3-4,5-6,SGWiki: Sengkang LRT
+PGLRT,whole line,PTC PE PW,3-4,5-6,SGWiki: Punggol LRT

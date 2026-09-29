@@ -88,7 +88,9 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   interchanges and waits.
 - **Travel by**: public transport (walk + bus + MRT/LRT) or car.
 - **Time of day**: weekday AM peak (06:30–08:30), midday, PM peak (17:00–19:00) or
-  evening (19:00–23:00). These match the headway bands LTA publishes for buses.
+  evening (19:00–23:00). These match the headway bands LTA publishes for buses. Waits
+  follow the band: trains run every 2–5 minutes at peak and 4–7 off-peak on most lines,
+  and most buses run more often at peak too.
 - **Waiting at stops**: *best case* (every bus and train turns up as you arrive),
   *average* (you arrive at a random time) or *worst case* (you just missed each one).
 - **Walking speed** slider (3–6.5 km/h). MRT interchange walks scale with it too (below).
@@ -141,6 +143,11 @@ minutes:
 | Average | half the middle of the range (5 min for 08-12) |
 | Worst case | the top of the range (12 min) |
 
+These ranges are LTA's own timetable for each service and period, so buses already wait
+less at peak: the median service runs every 9.5 minutes in the AM peak, 11.5 at midday,
+10.5 in the PM peak and 13.5 in the evening, and 79% run more often in the AM peak than
+at midday.
+
 Stop-to-stop running times combine a physical model (20 s dwell plus a cruising speed
 that rises from 22 km/h on short hops to 50 km/h on long expressway hops) with LTA's
 scheduled arrival times at each stop. The schedules are rounded to the minute and
@@ -148,13 +155,31 @@ sometimes mix trips, so they only rescale the model locally where they agree wit
 Peak-band factors (×1.10 AM, ×1.12 PM, ×0.92 evening) cover traffic.
 
 **Trains** use LTA's official GTFS timetable (on DataMall since August 2026) for a
-reference weekday: 6,032 trips over 426 platforms. The network is modelled per track
-segment, so segments served by several service patterns (for example the Circle Line)
-get their combined frequency. Riding through a station is only allowed along platform
-sequences that real trips run. Expected and worst-case waits come from the actual gaps
-between departures, so irregular service waits longer than half the headway. Station
-access uses LTA's exit coordinates plus 60 s to enter and 45 s to leave (fare gates and
-escalators).
+reference weekday: 6,032 trips over 426 platforms. It sets running times and where and
+when trains run, per track segment; riding through a station is only allowed along
+platform sequences that real trips run. Station access uses LTA's exit coordinates plus
+60 s to enter and 45 s to leave (fare gates and escalators).
+
+**Train waits** come from the operators' published frequencies for each line, or line
+section, at peak and off-peak, in
+[`data/manual/train_frequencies.csv`](data/manual/train_frequencies.csv). They're treated
+like the bus ranges above:
+
+| Line | Peak | Off-peak | Peak wait, average / worst | Off-peak wait |
+|---|---|---|---|---|
+| North–South, East–West | every 2–3 min | 4–5 min | 1.25 / 3 min | 2.25 / 5 min |
+| North East | 2–4 | 5–6 | 1.5 / 4 | 2.75 / 6 |
+| Downtown, Sengkang and Punggol LRT | 3–4 | 5–6 | 1.75 / 4 | 2.75 / 6 |
+| Circle | 3–5 | 5–7 | 2 / 5 | 3 / 7 |
+| Thomson–East Coast | 3–5 | 5–6 | 2 / 5 | 2.75 / 6 |
+| Changi Airport branch | 7–12 | 7–12 | 4.75 / 12 | 4.75 / 12 |
+
+The NSL north of Yishun (2–5 min at peak) and the EWL beyond Joo Koon (4–6 at peak, 8–10
+off-peak) have their own rows. The AM and PM peak bands take peak frequencies; midday and
+evening take off-peak ones. The Bukit Panjang LRT publishes no frequencies, so its waits
+come from the timetable's gaps. Those gaps are also what the other lines used before:
+they understated the peak, as the AM band opens with an hour of shoulder service, and
+their longest gap, the worst case, came to about 5 minutes in every band.
 
 The feed (version 0.1) gives running times in whole minutes plus a flat 40 s dwell, which
 overstates journeys: it schedules 103 minutes for the full East–West Line, against the
@@ -199,19 +224,19 @@ per-stop time", so the comparison has two parts:
 | Comparison (20,306 station pairs) | Raw timetable | Calibrated |
 |---|---|---|
 | Per-stop in-train time vs mrt.sg (EWL/NEL/DTL) | 1.28–1.32× | ≈1.0× (fitted) |
-| Platform-to-platform time with average waits, median difference | +0.2 min | −5.2 min |
+| Platform-to-platform time with average waits, median difference | +0.2 min | −5.4 min |
 
 The calibrated median sits below mrt.sg by about that fixed ~4-minute allowance, which
 the model replaces with its own waits and transfer walks. Door-to-door spot checks from
-Raffles Place in the AM peak, with average waits:
+Raffles Place, with average waits:
 
-| To | Minutes |
-|---|---|
-| Jurong East | 32 |
-| Tampines | 35 |
-| Changi Airport | 41 |
-| Woodlands | 51 |
-| Tuas Link | 54 |
+| To | AM peak | Midday |
+|---|---|---|
+| Jurong East | 29 | 30 |
+| Tampines | 33 | 34 |
+| Changi Airport | 43 | 44 |
+| Woodlands | 50 | 52 |
+| Tuas Link | 53 | 54 |
 
 These are in line with typical journey-planner times. The development commands below
 reproduce these checks.
@@ -222,6 +247,7 @@ reproduce these checks.
 |---|---|---|
 | Bus stops, services, routes, headways | LTA DataMall | fetched 26 Sep 2026 |
 | MRT/LRT timetable, platforms, station exits | LTA DataMall GTFS Schedule (Train) | published 26 Sep 2026; service day Mon 28 Sep 2026 |
+| MRT/LRT peak and off-peak frequencies | Operators' figures as listed on SGWiki; LTA's network-wide figures | Sep 2026 |
 | Footpaths and roads | OpenStreetMap (openstreetmap.fr extract) | 25 Sep 2026 |
 | MRT/LRT line shapes (overlay) | OpenStreetMap route relations | 25 Sep 2026 |
 | HDB building footprints | HDB via data.gov.sg | fetched 26 Sep 2026 |
@@ -271,7 +297,7 @@ isochrone/
 web/             index.html, app.js, palettes.js (colour schemes), style.css,
                  vendored MapLibre GL JS 5.24
 data/raw/        cached public datasets (committed)
-data/manual/     hand-curated inputs (MRT interchange timings, key destinations)
+data/manual/     hand-curated inputs (MRT interchange timings, train frequencies, key destinations)
 scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
@@ -284,7 +310,7 @@ Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) a
 ## Development
 
 ```bash
-poetry run pytest                                     # 41 unit + integration tests
+poetry run pytest                                     # 44 unit + integration tests
 poetry run python scripts/probe.py "Jurong East MRT"  # times to well-known places from an origin
 poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/data/travel_times_final_20250706.csv
 poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
@@ -309,11 +335,16 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
 - **One bus service per boarding**: at a stop served by several services going your way,
   real passengers take whichever comes first; the model waits for the best single
   service, so busy corridors can look slightly slower than they are.
+- **Published, not timetabled, train waits**: train waits use each line's published
+  frequency range rather than the timetable's own gaps, and both peak bands take peak
+  frequencies throughout, though the operators' peaks start and end half an hour later
+  (07:30–09:30, 17:30–19:30). The frequencies are as listed on SGWiki; the operators'
+  own pages weren't checked.
 - **Timetable quirks**: LTA's timetable (v0.1) starts every train at a terminus, so trips
-  are grouped into time bands by departure from the terminus. This avoids false
-  early-morning gaps mid-line, but can shift a band's service level by up to one trip
-  length. Its whole-minute running times are corrected with per-line factors (above),
-  which will need revisiting when LTA publishes a finer-grained feed.
+  are grouped into time bands by departure from the terminus (which decides where trains
+  run in each band, and the Bukit Panjang LRT's waits). Its whole-minute running times are
+  corrected with per-line factors (above), which will need revisiting when LTA publishes
+  a finer-grained feed.
 - **Excluded services**: bus services with no published headways (20 directions, mostly
   short workings such as 7A and a few City Direct runs), the Malaysian end of cross-border
   buses, ferries, Sentosa Express and the Changi Airport Skytrain.

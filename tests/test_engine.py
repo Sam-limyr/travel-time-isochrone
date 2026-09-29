@@ -54,6 +54,22 @@ def test_faster_walking_is_never_slower(engine):
         assert minutes_at(fast, lon, lat) <= minutes_at(slow, lon, lat)
 
 
+def test_train_waits_follow_published_peak_and_off_peak_frequencies(engine):
+    codes = engine.meta["names"]["platform_code"]
+    nsl = [h for h, (a, b) in enumerate(engine.tr["hop"]) if codes[a].startswith("NS") and codes[b].startswith("NS")]
+    w = engine.tr["hop_wait"][nsl] / 60  # (hops, bands, best/avg/worst) minutes
+    am, midday, pm, evening = range(4)
+    assert np.nanmax(w[:, :, 0]) == 0                                   # best case: no waiting
+    assert np.nanmax(w[:, am, 1]) < np.nanmin(w[:, midday, 1])           # peak trains every 2-5 min, off-peak 4-5
+    assert np.nanmax(w[:, pm, 2]) < np.nanmin(w[:, evening, 2]) + 0.01   # worst case follows the band too
+    assert set(engine.rail_sections.values()) and min(engine.rail_sections.values()) > 0  # every row applies
+
+
+def test_peak_hours_are_faster_by_public_transport(engine):
+    peak, midday = iso(engine, band="am_peak"), iso(engine, band="midday")
+    assert peak["area_km2"]["45"] > midday["area_km2"]["45"]
+
+
 def test_removing_rail_slows_long_trips(engine):
     both, bus_only = iso(engine), iso(engine, rail=False)
     assert minutes_at(bus_only, *PLACES["jurong_east"]) > minutes_at(both, *PLACES["jurong_east"]) + 10

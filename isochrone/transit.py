@@ -4,9 +4,12 @@ Buses: one "pattern" per service direction. Boarding waits come from LTA's headw
 ranges for each time band; running times from LTA's scheduled arrival times.
 
 Trains: modelled per track segment ("hop" = consecutive platform pair) from the
-official GTFS timetable, so segments shared by several service patterns (e.g. the
-Circle Line) get their combined frequency. Riding on through a station is only
-allowed along platform sequences that real trips run.
+official GTFS timetable, which gives running times and where and when trains run.
+Riding on through a station is only allowed along platform sequences that real
+trips run. Waits come from published peak and off-peak frequencies per line section
+(``published_rail_waits``, applied when the engine loads); the timetable's own gaps
+are the fallback, and there segments shared by several service patterns (e.g. the
+Circle Line) get their combined frequency.
 """
 from __future__ import annotations
 
@@ -39,8 +42,10 @@ def parse_headway(value: str) -> tuple[float, float] | None:
     return float(min(lo, hi)), float(max(lo, hi))
 
 
-def bus_waits(headway: tuple[float, float] | None) -> list[float]:
-    """Wait in seconds for (best, avg, worst); NaN when the service does not run."""
+def headway_waits(headway: tuple[float, float] | None) -> list[float]:
+    """Wait in seconds for (best, avg, worst) given a published headway range in minutes,
+    such as a bus's "08-12" or a train line's "2-3": nothing, half the middle of the range
+    (a random arrival at a regular service), or the top of the range. NaN when it doesn't run."""
     if headway is None:
         return [np.nan] * NW
     lo, hi = headway
@@ -159,7 +164,7 @@ def build_bus(keep_stop) -> BusModel:
 
         p = len(names)
         names.append(f"{key[0]} (dir {key[1]})")
-        waits.append([bus_waits(h) for h in heads])
+        waits.append([headway_waits(h) for h in heads])
         ride_pat.extend([p] * len(idx))
         ride_stop.extend(idx.tolist())
         ride_hop.extend(hops.tolist() + [np.nan])
@@ -230,6 +235,54 @@ def combined_waits(pattern_deps: list[np.ndarray], band_seconds: float) -> tuple
         n_total += n
     headway = band_seconds / n_total
     return 0.0, kappa / n_total * headway / 2, ratio / n_total * headway
+
+
+def _code_parts(code: str) -> tuple[str, int | None]:
+    """'EW29' -> ('EW', 29); 'CG' or 'STC' -> ('CG', None)."""
+    m = re.fullmatch(r"([A-Z]+)(\d*)", code)
+    if not m:
+        return code, None
+    return m.group(1), int(m.group(2)) if m.group(2) else None
+
+
+def _covers(token: str):
+    """Station-code test for one token of a train_frequencies.csv row: a range such as
+    'EW29-EW33', or a prefix such as 'CG' (every code that starts with it)."""
+    m = re.fullmatch(r"([A-Z]+)(\d+)-\1(\d+)", token)
+    if m:
+        prefix, lo, hi = m.group(1), int(m.group(2)), int(m.group(3))
+
+        def in_range(code: str) -> bool:
+            p, n = _code_parts(code)
+            return p == prefix and n is not None and lo <= n <= hi
+        return in_range
+    return lambda code: _code_parts(code)[0] == token
+
+
+def published_rail_waits(path, platform_code: list[str], hop: np.ndarray,
+                         gtfs_wait: np.ndarray) -> tuple[np.ndarray, dict[str, int]]:
+    """Train waits per hop and band from published frequencies (data/manual/train_frequencies.csv).
+
+    Each row gives a line section's peak and off-peak headway range, and a hop takes the
+    first row whose stations include both its platforms; its waits follow from that range
+    as a bus's do. The timetable still decides where trains run: a band with no train over
+    the hop stays NaN. Hops without a row (the Bukit Panjang LRT) keep ``gtfs_wait``.
+    Returns the waits and how many hops each row covers.
+    """
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    tests = [[_covers(t) for t in r["stations"].split()] for r in rows]
+    waits = gtfs_wait.copy()
+    counts = [0] * len(rows)
+    for h, (a, b) in enumerate(hop):
+        for k, row in enumerate(rows):
+            if all(any(t(c) for t in tests[k]) for c in (platform_code[a], platform_code[b])):
+                for bi, band in enumerate(BANDS):
+                    if not np.isnan(gtfs_wait[h, bi, 1]):
+                        waits[h, bi] = headway_waits(parse_headway(row[f"{config.BANDS[band]['rail']}_min"]))
+                counts[k] += 1
+                break
+    return waits, {f"{r['line']} {r['section']}": n for r, n in zip(rows, counts)}
 
 
 @dataclass

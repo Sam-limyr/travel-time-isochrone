@@ -1,6 +1,7 @@
 """FastAPI app: JSON API plus the static web front end."""
 from __future__ import annotations
 
+import csv
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -32,6 +33,15 @@ def _request(lat: float, lon: float, mode: str, band: str, wait: str, walk_kmh: 
                    bus=bus, rail=rail, voiddeck=voiddeck, parking_min=parking, direction=direction)
 
 
+def _train_frequencies() -> list[dict]:
+    """The published train frequencies the engine applies, for the About panel."""
+    if not config.TRAIN_FREQUENCIES.exists():
+        return []
+    with open(config.TRAIN_FREQUENCIES, encoding="utf-8-sig", newline="") as fh:
+        return [{"line": r["line"], "section": r["section"], "peak": r["peak_min"], "offpeak": r["offpeak_min"]}
+                for r in csv.DictReader(fh)]
+
+
 @app.get("/api/meta")
 def meta() -> dict:
     m = engine.meta
@@ -46,6 +56,7 @@ def meta() -> dict:
         "max_minutes": config.MAX_MINUTES,
         "places": [{"name": n, "lon": lon, "lat": lat} for n, lon, lat in config.PLACES],
         "key_destinations": {"count": len(engine.key_dest), "skipped": engine.key_skipped},
+        "train_frequencies": _train_frequencies(),
         "service_date": m["service_date"],
         "built_at": m["built_at"],
         "sources": m["sources"],
