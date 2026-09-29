@@ -239,6 +239,10 @@ function buildControls() {
   });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "auto") applyTheme(); });
   $("#route-clear").addEventListener("click", clearRoute);
+  document.addEventListener("keydown", (e) => {  // Esc closes the route or trips
+    const typing = e.target.matches("input[type=text], input[type=number], textarea");
+    if (e.key === "Escape" && !$("#route-section").hidden && !typing) clearRoute();
+  });
   $("#key-score").addEventListener("click", showKeySection);
   $("#my-places-example").addEventListener("click", loadExample);
   $("#panel-toggle").addEventListener("click", () => {
@@ -981,8 +985,7 @@ function drawRoute(route) {
 
   const box = $("#route");
   box.replaceChildren();
-  $("#route-title").textContent = "Route";
-  $("#route-section").hidden = false;
+  showRouteSection("Route");
   if (!route.reachable) {
     box.append(el("p", { className: "note" }, `Not reachable within ${meta.max_minutes} minutes with these settings.`));
     return;
@@ -1073,8 +1076,7 @@ function drawTrips() {
   const complete = routes.every((r, k) => r.reachable || !weights[k]);
   const avg = total > 0 && complete ? routes.reduce((s, r, k) => s + (weights[k] ? weights[k] * r.total_s : 0), 0) / total / 60 : null;
   const how = state.mode === "car" ? "by car" : "by public transport", weighted = placesWeighted();
-  $("#route-title").textContent = "Trips from here";
-  $("#route-section").hidden = false;
+  showRouteSection("Trips from here");
   $("#route").replaceChildren(
     el("p", { className: "total" }, avg === null ? "—" : `${fmtMin(avg)} min`,
       el("small", {}, `${weighted ? "weighted average" : "average"}, ${how}, ${bandLabel(state.band)}`)),
@@ -1113,7 +1115,16 @@ function dimOverlays(dim) {
   map.setPaintProperty("mrt-stations", "circle-stroke-opacity", dim ? 0.4 : 1);
 }
 
+/** Show the route/trips section; bring it into view when it first opens, so its Close button is seen. */
+function showRouteSection(title) {
+  const section = $("#route-section"), opening = section.hidden;
+  $("#route-title").textContent = title;
+  section.hidden = false;
+  if (opening && !$("#panel").classList.contains("collapsed")) section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function clearRoute() {
+  routeSeq++;  // a route or trips still loading must not reappear
   if (state.dir === "to") {
     state.tripFrom = null; lastTrips = null;
     if (tripMarker) { tripMarker.remove(); tripMarker = null; }

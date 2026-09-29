@@ -198,6 +198,11 @@ table.data td.muted { color: var(--muted); }
 .link-btn:hover { text-decoration: underline; }
 .link-btn:focus-visible { outline: 2px solid var(--accent); }
 h2 .link-btn { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.close-btn { margin-left: auto; font: inherit; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0;
+             color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+             padding: 3px 10px; cursor: pointer; }
+.close-btn:hover { background: var(--grid); }
+.close-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .icon-btn { font: inherit; font-size: 16px; line-height: 1; width: 30px; height: 30px; border-radius: 6px;
             background: transparent; color: var(--ink-2); border: 1px solid var(--border); cursor: pointer; flex: none; }
 .icon-btn:hover { background: var(--grid); }

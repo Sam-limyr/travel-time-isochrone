@@ -39,6 +39,13 @@
         <p class="note" id="my-places-full" hidden>That's five: remove one to add another.</p>
       </section>
 
+      <!-- a right-click's result sits near the top, where it is seen, with a clear way out -->
+      <section id="route-section" hidden>
+        <h2><span id="route-title">Route</span>
+          <button type="button" class="close-btn" id="route-clear" title="Close (Esc)">✕ Close</button></h2>
+        <div id="route"></div>
+      </section>
+
       <section>
         <h2>Travel by</h2>
         <div class="seg" role="radiogroup" aria-label="Travel mode" data-name="mode">
@@ -122,11 +129,6 @@
           <label><input type="checkbox" id="ov-bus"> Bus routes</label>
           <label><input type="checkbox" id="ov-stops"> Bus stops <span class="sub">(zoom in)</span></label>
         </div>
-      </section>
-
-      <section id="route-section" hidden>
-        <h2><span id="route-title">Route</span> <button type="button" class="link-btn" id="route-clear">clear</button></h2>
-        <div id="route"></div>
       </section>
 
       <section id="key-section" hidden>

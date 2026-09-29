@@ -77,7 +77,8 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   every spot, the average door-to-door time from there to the places: where to live or
   meet so the trips add up to the least. Hover for each place's own time; drag a numbered
   pin to move it. **Right-click** a spot (or use *Trips* in the landmarks table) to see
-  its trip to each place, with legs, and their weighted average.
+  its trip to each place, with legs, and their weighted average. They appear at the top
+  of the panel; *✕ Close* or Esc removes them.
 - **Weights and names**: give each place a name and a weight for how much it counts.
   Trips per week work well: for a couple, *Work (you)* 5, *Work (partner)* 5 and
   *Weekend park* 2, which is what *try an example* loads. The map shows the weighted
@@ -85,7 +86,7 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   Weights apply instantly, with no new search.
 - **Right-click** a point (**Ctrl-click** or two-finger click on a Mac), or use *Route* in the
   places table, to see the fastest itinerary there: walks, bus services, train lines,
-  interchanges and waits.
+  interchanges and waits. *✕ Close* or Esc removes it.
 - **Travel by**: public transport (walk + bus + MRT/LRT) or car.
 - **Time of day**: weekday AM peak (06:30–08:30), midday, PM peak (17:00–19:00) or
   evening (19:00–23:00). These match the headway bands LTA publishes for buses. Waits
