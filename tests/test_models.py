@@ -52,6 +52,29 @@ def test_station_access_from_depths_and_defaults(tmp_path):
     assert [r["codes"] for r in rows] == [["DT21"], ["EW13", "NS25"], ["NS24"], ["EW23", "NS2"]]
 
 
+def test_general_profile_is_the_fastest_journey_sample():
+    """The General key-destinations profile keeps the-fastest-journey's weights unchanged
+    (mrt_distance.py, get_weights(): possible_general_raw_percentage_weights, summed per station)."""
+    import tomllib
+    from collections import defaultdict
+
+    from isochrone import config
+    general = tomllib.loads(config.KEY_DESTINATIONS.read_text(encoding="utf-8"))["general"]
+    totals = defaultdict(float)
+    for places in general["groups"].values():
+        for name, weight in places.items():
+            totals[name] += weight
+    assert dict(totals) == {
+        "Raffles Place": 10, "Marina Bay": 5, "Downtown": 5, "Tanjong Pagar": 5, "Shenton Way": 5, "Bugis": 6.5,
+        "Orchard": 6.5, "one-north": 2.5, "Jurong East": 2.5, "Punggol Coast": 2.5, "Expo": 2.5, "Paya Lebar": 4,
+        "Labrador Park": 2.5, "Tampines": 4, "Woodlands": 4, "Somerset": 1.5, "Dhoby Ghaut": 1.5, "Promenade": 1.5,
+        "City Hall": 1.5, "Maxwell": 1.5, "Bayfront": 1.5, "HarbourFront": 1.5, "Holland Village": 1.5,
+        "Marine Parade": 1.5, "Punggol": 1.5, "Serangoon": 1.5, "Stadium": 2.5, "Gardens by the Bay": 2.5,
+        "Botanic Gardens": 1.25, "Napier": 1.25, "Chinese Garden": 2.5, "Upper Thomson": 1.5, "Tanjong Rhu": 2.5,
+        "Kranji": 1, "Changi Airport": 1,
+    }
+
+
 def test_gap_stats_regular_and_bunched():
     regular = np.arange(0, 7200, 300.0)  # every 5 min
     assert transit.gap_stats(regular, 7200) == (0.0, 150.0, 300.0)

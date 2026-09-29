@@ -1,0 +1,353 @@
+# Preset profiles for the "Key destinations" score: the app shows the weighted average
+# travel time from the start point to a profile's places, and lets you switch profiles.
+#
+#   [<key>]                   a profile; the key is what the app's URL keeps
+#   name, description         shown in the app
+#   [<key>.groups."<group>"]  places and their weights, summarised per group. A place is
+#                             an MRT/LRT station's name, or has coordinates:
+#                             "Somewhere" = { weight = 2, lat = 1.3000, lon = 103.8000 }
+#
+# Weights can use any scale (the app shows shares of the profile's total); these sum to
+# 100. A place can appear in several groups, and its weights add up. See README.md.
+
+
+# The sample weights of the sibling project the-fastest-journey, copied unchanged from
+# mrt_distance/mrt_distance.py, get_weights(): possible_general_raw_percentage_weights.
+# Its category names are kept in the comments.
+[general]
+name = "General"
+description = "Work in the CBD or a regional centre, then shopping, parks and the odd trip to Johor Bahru or the airport. The sample weights of the-fastest-journey, unchanged."
+
+[general.groups."Work: CBD"]  # work_central_business_district: 40%
+"Raffles Place" = 10.0
+"Marina Bay" = 5.0
+"Downtown" = 5.0
+"Tanjong Pagar" = 5.0
+"Shenton Way" = 5.0
+"Bugis" = 5.0
+"Orchard" = 5.0
+
+[general.groups."Work: regional centres"]  # work_decentralized_nodes: 20%
+"one-north" = 2.5
+"Jurong East" = 2.5
+"Punggol Coast" = 2.5
+"Expo" = 2.5
+"Paya Lebar" = 2.5
+"Labrador Park" = 2.5
+"Tampines" = 2.5
+"Woodlands" = 2.5
+
+[general.groups."Shopping and leisure"]  # common_commercial_areas: 26.5%
+# Central
+"Orchard" = 1.5
+"Somerset" = 1.5
+"Dhoby Ghaut" = 1.5
+"Promenade" = 1.5
+"City Hall" = 1.5
+"Bugis" = 1.5
+"Maxwell" = 1.5
+"Bayfront" = 1.5
+# Decentralized
+"HarbourFront" = 1.5
+"Holland Village" = 1.5
+"Marine Parade" = 1.5
+"Tampines" = 1.5
+"Punggol" = 1.5
+"Woodlands" = 1.5
+"Paya Lebar" = 1.5
+"Serangoon" = 1.5
+"Stadium" = 2.5
+
+[general.groups.Nature]  # common_nature_areas: 11.5%
+"Gardens by the Bay" = 2.5
+"Botanic Gardens" = 1.25  # Both this and Napier are acceptable entrances
+"Napier" = 1.25
+"Chinese Garden" = 2.5
+"Upper Thomson" = 1.5  # Central Water Catchment
+"Tanjong Rhu" = 2.5  # best entry to East Coast Park
+
+[general.groups.Other]  # miscellaneous_areas: 2%
+"Kranji" = 1.0  # JB - In the future, Woodlands North will be the exit point
+"Changi Airport" = 1.0
+
+
+[cbd]
+name = "Office job in the CBD"
+description = "Works in the CBD five days a week. After work and at weekends: food, shopping and the waterfront in town, and the occasional flight."
+
+[cbd.groups."Work: CBD"]  # 50%
+"Raffles Place" = 15
+"Downtown" = 7        # Marina Bay Financial Centre
+"Tanjong Pagar" = 7
+"Telok Ayer" = 5
+"Shenton Way" = 5
+"Promenade" = 4       # Suntec City
+"City Hall" = 3
+"Maxwell" = 2
+"Bugis" = 2
+
+[cbd.groups."Food and drinks"]  # 15%
+"Clarke Quay" = 3
+"Chinatown" = 3
+"Tanjong Pagar" = 3   # Duxton and Tras Street
+"Telok Ayer" = 2      # Amoy and Club Streets
+"Tiong Bahru" = 2
+"Bugis" = 2           # Kampong Glam
+
+[cbd.groups."Shopping and leisure"]  # 20%
+"Orchard" = 6
+"Somerset" = 3
+"Bayfront" = 3        # Marina Bay Sands
+"Dhoby Ghaut" = 2
+"Esplanade" = 2
+"HarbourFront" = 2
+"Holland Village" = 2
+
+[cbd.groups."Parks and exercise"]  # 10%
+"Gardens by the Bay" = 3
+"Botanic Gardens" = 3
+"East Coast Park" = { weight = 2, lat = 1.3063, lon = 103.9331 }
+"Stadium" = 2         # Sports Hub and the Kallang riverside
+
+[cbd.groups.Travel]  # 5%
+"Changi Airport" = 5
+
+
+[business_parks]
+name = "Office job outside the CBD"
+description = "Works in a business park or regional centre: one-north, Jurong, Paya Lebar, Changi and others. Leisure spread across town and the heartlands, with the odd meeting in the CBD."
+
+[business_parks.groups."Work: business parks and regional centres"]  # 50%
+"one-north" = 8       # Fusionopolis, Biopolis, Mediapolis
+"Jurong East" = 7     # Jurong Lake District
+"Paya Lebar" = 6      # Paya Lebar Quarter
+"Expo" = 6            # Changi Business Park
+"Kent Ridge" = 5      # Science Park, NUH
+"Labrador Park" = 5   # Mapletree Business City
+"Tampines" = 4
+"Buona Vista" = 3
+"Woodlands" = 3
+"Punggol Coast" = 3   # Punggol Digital District
+
+[business_parks.groups."Shopping and food"]  # 25%
+"Orchard" = 4
+"Jurong East" = 3     # Westgate, JEM
+"Serangoon" = 3       # NEX
+"Tampines" = 3
+"Bishan" = 2          # Junction 8
+"Bugis" = 2
+"Clementi" = 2
+"HarbourFront" = 2
+"Holland Village" = 2
+"Paya Lebar" = 2
+
+[business_parks.groups."Parks and nature"]  # 15%
+"Botanic Gardens" = 3
+"Chinese Garden" = 3  # Jurong Lake Gardens
+"Gardens by the Bay" = 3
+"East Coast Park" = { weight = 3, lat = 1.3063, lon = 103.9331 }
+"MacRitchie Reservoir" = { weight = 3, lat = 1.3429, lon = 103.8328 }
+
+[business_parks.groups."Meetings in the CBD"]  # 6%
+"Raffles Place" = 4
+"City Hall" = 2
+
+[business_parks.groups.Travel]  # 4%
+"Changi Airport" = 4
+
+
+[industrial]
+name = "Industrial job"
+description = "Works in the industrial estates: mostly Jurong and Tuas in the west, others in the north and east. Shopping and errands in the heartland towns."
+
+[industrial.groups."Work: Jurong and Tuas"]  # 26%
+"Pioneer" = 5
+"Joo Koon" = 4
+"Boon Lay" = 4        # Jurong Industrial Estate
+"Gul Circle" = 4
+"Tuas Crescent" = 3
+"Tuas West Road" = 3
+"Tuas Link" = 3
+
+[industrial.groups."Work: north"]  # 12%
+"Sungei Kadut Industrial Estate" = { weight = 4, lat = 1.4126, lon = 103.7497 }
+"Senoko" = { weight = 4, lat = 1.4569, lon = 103.7988 }
+"Woodlands North" = 2
+"Seletar Aerospace Park" = { weight = 2, lat = 1.4086, lon = 103.8670 }
+
+[industrial.groups."Work: east and central"]  # 17%
+"Loyang Industrial Estate" = { weight = 3, lat = 1.3710, lon = 103.9700 }
+"Changi Airfreight Centre" = { weight = 3, lat = 1.3722, lon = 103.9946 }
+"Changi South Industrial Estate" = { weight = 2, lat = 1.3335, lon = 103.9660 }
+"Tampines Wafer Fab Park" = { weight = 2, lat = 1.3732, lon = 103.9306 }
+"Kaki Bukit Industrial Estate" = { weight = 2, lat = 1.3325, lon = 103.9041 }
+"Ang Mo Kio Industrial Park" = { weight = 2, lat = 1.3741, lon = 103.8668 }
+"Tai Seng" = 2
+"Ubi" = 1
+
+[industrial.groups."Shopping, food and errands"]  # 28%
+"Jurong East" = 5
+"Boon Lay" = 4        # Jurong Point
+"Woodlands" = 4       # Causeway Point
+"Tampines" = 3
+"Little India" = 3
+"Chinatown" = 3
+"Yishun" = 2
+"Bedok" = 2
+"Orchard" = 2
+
+[industrial.groups."Parks and leisure"]  # 12%
+"Chinese Garden" = 3  # Jurong Lake Gardens
+"East Coast Park" = { weight = 3, lat = 1.3063, lon = 103.9331 }
+"Pasir Ris Park" = { weight = 2, lat = 1.3825, lon = 103.9501 }
+"Bishan-Ang Mo Kio Park" = { weight = 2, lat = 1.3615, lon = 103.8464 }
+"Gardens by the Bay" = 2
+
+[industrial.groups.Other]  # 5%
+"Changi Airport" = 3
+"Raffles Place" = 2
+
+
+[jb]
+name = "Frequent trips to JB"
+description = "Crosses to Johor Bahru often, for family, shopping or food, and works in Singapore. The RTS Link from Woodlands North is due to open at the end of 2026; buses cross from the checkpoints, Kranji and Queen Street."
+
+[jb.groups."To Johor Bahru"]  # 40%
+"Woodlands Checkpoint" = { weight = 14, lat = 1.4459, lon = 103.7686 }  # the Causeway, by bus or car
+"Woodlands North" = 12  # RTS Link to Bukit Chagar
+"Tuas Checkpoint" = { weight = 6, lat = 1.3480, lon = 103.6356 }  # the Second Link
+"Kranji" = 4            # buses 160, 170X and Causeway Link
+"Queen Street Terminal" = { weight = 4, lat = 1.3035, lon = 103.8566 }  # Causeway Link CW2
+
+[jb.groups.Work]  # 40%
+"Raffles Place" = 10
+"Tanjong Pagar" = 5
+"one-north" = 5
+"Jurong East" = 5
+"Woodlands" = 5
+"Paya Lebar" = 5
+"Expo" = 5
+
+[jb.groups."Shopping and leisure in Singapore"]  # 15%
+"Woodlands" = 4       # Causeway Point
+"Orchard" = 4
+"Jurong East" = 3
+"Bugis" = 2
+"Yishun" = 2
+
+[jb.groups.Travel]  # 5%
+"Changi Airport" = 5
+
+
+[sports]
+name = "Sports and fitness"
+description = "Trains most days: pools, gyms and halls at ActiveSG sports centres and the Sports Hub, and running and cycling in the parks and along the coast. Works in the CBD or a regional centre."
+
+[sports.groups."Sports centres"]  # 30%
+"Stadium" = 8         # Sports Hub, OCBC Aquatic Centre
+"Our Tampines Hub" = { weight = 4, lat = 1.3532, lon = 103.9404 }
+"Bishan Sports Centre" = { weight = 3, lat = 1.3555, lon = 103.8509 }
+"Toa Payoh Sports Centre" = { weight = 3, lat = 1.3311, lon = 103.8493 }
+"Jurong East Sports Centre" = { weight = 3, lat = 1.3457, lon = 103.7295 }
+"Heartbeat@Bedok" = { weight = 3, lat = 1.3270, lon = 103.9321 }
+"Sengkang Sports Centre" = { weight = 2, lat = 1.3959, lon = 103.8864 }
+"Woodlands Sports Centre" = { weight = 2, lat = 1.4342, lon = 103.7799 }
+"Clementi Sports Centre" = { weight = 2, lat = 1.3109, lon = 103.7649 }
+
+[sports.groups."Running, cycling and the outdoors"]  # 35%
+"East Coast Park" = { weight = 8, lat = 1.3063, lon = 103.9331 }
+"MacRitchie Reservoir" = { weight = 6, lat = 1.3429, lon = 103.8328 }
+"Bukit Timah Nature Reserve" = { weight = 4, lat = 1.3503, lon = 103.7782 }
+"Esplanade" = 3       # the Marina Bay loop
+"Southern Ridges" = { weight = 3, lat = 1.2761, lon = 103.8154 }  # Henderson Waves
+"Punggol Waterway Park" = { weight = 3, lat = 1.4093, lon = 103.9057 }
+"Bishan-Ang Mo Kio Park" = { weight = 2, lat = 1.3615, lon = 103.8464 }
+"Pasir Ris Park" = { weight = 2, lat = 1.3825, lon = 103.9501 }
+"Changi Beach Park" = { weight = 2, lat = 1.3914, lon = 103.9912 }
+"Chinese Garden" = 2  # Jurong Lake Gardens
+
+[sports.groups.Work]  # 30%
+"Raffles Place" = 8
+"Tanjong Pagar" = 4
+"Downtown" = 3
+"one-north" = 4
+"Jurong East" = 4
+"Paya Lebar" = 4
+"Expo" = 3
+
+[sports.groups.Other]  # 5%
+"Orchard" = 3
+"Changi Airport" = 2
+
+
+[student]
+name = "Student"
+description = "Studies at a university or polytechnic, weighted roughly by enrolment. Weekends at the malls and in town."
+
+[student.groups.Universities]  # 40%
+"NUS (Kent Ridge)" = { weight = 14, lat = 1.2954, lon = 103.7757 }
+"NTU" = { weight = 12, lat = 1.3480, lon = 103.6815 }
+"SMU" = { weight = 5, lat = 1.2964, lon = 103.8500 }
+"SIT (Punggol)" = { weight = 4, lat = 1.4127, lon = 103.9106 }
+"SUSS" = { weight = 3, lat = 1.3294, lon = 103.7765 }
+"SUTD" = { weight = 2, lat = 1.3406, lon = 103.9631 }
+
+[student.groups.Polytechnics]  # 30%
+"Singapore Polytechnic" = { weight = 6, lat = 1.3094, lon = 103.7770 }
+"Ngee Ann Polytechnic" = { weight = 6, lat = 1.3334, lon = 103.7759 }
+"Temasek Polytechnic" = { weight = 6, lat = 1.3457, lon = 103.9303 }
+"Nanyang Polytechnic" = { weight = 6, lat = 1.3792, lon = 103.8491 }
+"Republic Polytechnic" = { weight = 6, lat = 1.4445, lon = 103.7857 }
+
+[student.groups."Malls and hanging out"]  # 22%
+"Orchard" = 5
+"Bugis" = 4
+"Somerset" = 3
+"Jurong East" = 3
+"Tampines" = 3
+"Serangoon" = 2
+"Clarke Quay" = 2
+
+[student.groups."Parks and the beach"]  # 8%
+"Gardens by the Bay" = 2
+"East Coast Park" = { weight = 2, lat = 1.3063, lon = 103.9331 }
+"Botanic Gardens" = 2
+"Chinese Garden" = 2
+
+
+[visitor]
+name = "Visitor"
+description = "Sightseeing: Marina Bay, the heritage districts and their food, Orchard Road, Sentosa and the wildlife parks. Handy for choosing a hotel."
+
+[visitor.groups."Marina Bay and the Civic District"]  # 30%
+"Bayfront" = 8        # Marina Bay Sands, Gardens by the Bay
+"Raffles Place" = 5   # the Merlion, Boat Quay
+"Esplanade" = 4
+"City Hall" = 4       # National Gallery, Raffles Hotel
+"Gardens by the Bay" = 3
+"Promenade" = 3       # Singapore Flyer
+"Clarke Quay" = 3
+
+[visitor.groups."Heritage districts and food"]  # 25%
+"Chinatown" = 7
+"Little India" = 5
+"Bugis" = 5           # Kampong Glam
+"Maxwell" = 3         # Maxwell Food Centre
+"Tanjong Katong" = 3  # Katong and Joo Chiat
+"Tiong Bahru" = 2
+
+[visitor.groups.Shopping]  # 15%
+"Orchard" = 8
+"Somerset" = 3
+"Dhoby Ghaut" = 2
+"HarbourFront" = 2    # VivoCity
+
+[visitor.groups.Attractions]  # 25%
+"Sentosa" = { weight = 9, lat = 1.2569, lon = 103.8205 }  # Resorts World, the beaches
+"Mandai wildlife parks" = { weight = 8, lat = 1.4046, lon = 103.7909 }  # the Zoo, Night Safari, Bird Paradise
+"Botanic Gardens" = 4
+"Bras Basah" = 2      # the museums
+"Southern Ridges" = { weight = 2, lat = 1.2761, lon = 103.8154 }  # Henderson Waves
+
+[visitor.groups.Travel]  # 5%
+"Changi Airport" = 5  # and Jewel

@@ -109,12 +109,9 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   light end in the dark theme, so colour fades into the basemap with distance.
 - **Opacity** and **overlays** for MRT/LRT lines, bus routes and bus stops. Hover for exact
   times, station names and the bus services on a road.
-- **Key destinations**: the weighted average travel time from the start point to a list
-  of important places, shown in the legend card, with a breakdown in the panel by group
-  and by place. The sample list is 36 MRT stations weighted for work (CBD 40%,
-  regional centres 20%), shopping and leisure, nature and the airport, from the
-  sibling *the-fastest-journey* project. Edit
-  [`data/manual/key_destinations.csv`](data/manual/key_destinations.csv) to use your own.
+- **Key destinations**: the weighted average travel time from the start point to a
+  profile's important places, shown in the legend card, with a breakdown in the panel by
+  group and by place. Pick a **profile** in the panel; switching is instant (below).
 - **Share of Singapore's land** (in the legend card): how much of the land falls in each
   band, as a bar and a table. The land is URA's outline, 785 km² including reservoirs and
   offshore islands. The last two rows are land beyond the cut-off, and land more than
@@ -122,6 +119,27 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   the map leaves blank. Rows follow the bands, or the legend's steps in smooth mode.
 - The **Reachable area** and **Travel time to places** tables give the same information
   as text. Settings, start point and map view are kept in the URL, so links can be shared.
+
+### Key destination profiles
+
+*General* is the sample list of the sibling *the-fastest-journey* project, copied
+unchanged. The others are illustrations of different lives. Each sums to 100:
+
+| Profile | Weights |
+|---|---|
+| General | work in the CBD 40% and in regional centres 20%, shopping and leisure 26.5%, nature 11.5%, Kranji (for Johor) and Changi Airport 2%: 36 MRT stations |
+| Office job in the CBD | CBD offices 50%, food and drinks 15%, shopping and leisure 20%, parks and exercise 10%, the airport 5% |
+| Office job outside the CBD | business parks and regional centres 50% (one-north, Jurong, Paya Lebar, Changi Business Park, Science Park and others), shopping and food 25%, parks 15%, meetings in the CBD 6%, the airport 4% |
+| Industrial job | industrial estates 55%: Jurong and Tuas 26%; Sungei Kadut, Senoko, Woodlands and Seletar 12%; Loyang, Changi, Tampines, Kaki Bukit, Ang Mo Kio and others 17%. Heartland shopping and errands 28%, parks 12%, other 5% |
+| Frequent trips to JB | crossings 40%: Woodlands Checkpoint 14, the RTS Link at Woodlands North 12 (due to open at the end of 2026), Tuas Checkpoint 6, Kranji and Queen Street buses 4 each. Work 40%, shopping 15%, the airport 5% |
+| Sports and fitness | the Sports Hub and eight ActiveSG sports centres 30%, parks and the coast for running and cycling 35% (East Coast Park, MacRitchie, Bukit Timah and others), work 30%, other 5% |
+| Student | universities 40% (NUS, NTU, SMU, SIT, SUSS and SUTD, roughly by enrolment), the five polytechnics 30%, malls 22%, parks 8% |
+| Visitor | Marina Bay and the Civic District 30%, heritage districts and food 25%, shopping 15%, Sentosa, the Mandai wildlife parks and other attractions 25%, the airport 5% |
+
+Places are MRT stations or, where no station fits (checkpoints, campuses, parks,
+industrial estates), coordinates taken from OpenStreetMap. Edit
+[`data/manual/key_destinations.toml`](data/manual/key_destinations.toml) to change the
+weights or add a profile, then restart the server.
 
 ## How travel times are calculated
 
@@ -323,7 +341,7 @@ web/             index.html, app.js, palettes.js (colour schemes), style.css,
                  vendored MapLibre GL JS 5.24
 data/raw/        cached public datasets (committed)
 data/manual/     hand-curated inputs (MRT interchange timings, train frequencies, station
-                 depths, key destinations)
+                 depths, key destination profiles)
 scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
@@ -336,7 +354,7 @@ Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) a
 ## Development
 
 ```bash
-poetry run pytest                                     # 46 unit + integration tests
+poetry run pytest                                     # 48 unit + integration tests
 poetry run python scripts/probe.py "Jurong East MRT"  # times to well-known places from an origin
 poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/data/travel_times_final_20250706.csv
 poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
@@ -349,7 +367,7 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
 
 | Endpoint | Parameters |
 |---|---|
-| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`, `direction` (`from` the point, the default, or `to` it from everywhere). Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), reachable areas, and `key_destinations` (each place's time, group averages and the weighted average). |
+| `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`, `direction` (`from` the point, the default, or `to` it from everywhere). Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), reachable areas, and `key_destinations` (for each profile: each place's time, group averages and the weighted average). |
 | `GET /api/route` | Same as above plus `to_lat`, `to_lon`. Returns itinerary legs with times and geometry. |
 | `GET /api/meta` | Bands, options, data sources and build statistics. |
 | `GET /api/overlays/{mrt_lines,mrt_stations,bus_routes,bus_stops}` | GeoJSON. |

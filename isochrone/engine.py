@@ -16,11 +16,11 @@ remaining walk.
 from __future__ import annotations
 
 import base64
-import csv
 import functools
 import json
 import threading
 import time
+import tomllib
 from collections import OrderedDict
 from dataclasses import dataclass
 
@@ -199,42 +199,48 @@ class Engine:
             raise ValueError("Pick a point on Singapore's land (the sea and Johor are outside the network).")
 
     def _load_key_destinations(self, stations: dict) -> None:
-        """The weighted places behind the key-destinations score, snapped to both networks.
-        Rows without coordinates name a station; names that match none are skipped."""
+        """The preset profiles behind the key-destinations score, and their places snapped to
+        both networks. A place is a station's name or has coordinates; names that match no
+        station are skipped (and listed)."""
         where = {f["properties"]["name"].casefold(): f["geometry"]["coordinates"] for f in stations["features"]}
-        self.key_dest, self.key_skipped = [], []
+        self.key_profiles, self.key_places = [], []  # places are shared between profiles
         path = config.KEY_DESTINATIONS
         if not path.exists():
             return
-        with path.open(encoding="utf-8-sig", newline="") as fh:
-            for r in csv.DictReader(fh):
-                name = r["name"].strip()
-                try:
-                    weight = float(r["weight"])
-                    if r.get("lon") and r.get("lat"):
-                        lon, lat = float(r["lon"]), float(r["lat"])
-                    else:
-                        lon, lat = where.get(name.casefold(), (None, None))
-                except ValueError as exc:
-                    raise ValueError(f"{path.name}: bad weight or coordinates for {name!r}") from exc
-                if lon is None:
-                    self.key_skipped.append(name)
-                    continue
-                self.key_dest.append({"group": r["group"].strip(), "name": name, "weight": weight,
-                                      "lon": lon, "lat": lat})
-        if self.key_dest:
-            pts = np.column_stack(geo.to_xy([r["lon"] for r in self.key_dest], [r["lat"] for r in self.key_dest]))
+        place_ids: dict[tuple, int] = {}
+        for key, profile in tomllib.loads(path.read_text(encoding="utf-8")).items():
+            items, skipped = [], []
+            for group, places in profile.get("groups", {}).items():
+                for name, spec in places.items():
+                    spec = spec if isinstance(spec, dict) else {"weight": spec}
+                    try:
+                        weight = float(spec["weight"])
+                        lon, lat = ((float(spec["lon"]), float(spec["lat"])) if "lon" in spec and "lat" in spec
+                                    else where.get(name.casefold(), (None, None)))
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise ValueError(f"{path.name}: [{key}] {group}: bad weight or coordinates for {name!r}") from exc
+                    if lon is None:
+                        skipped.append(name)
+                        continue
+                    pid = place_ids.setdefault((name, round(lon, 5), round(lat, 5)), len(place_ids))
+                    if pid == len(self.key_places):
+                        self.key_places.append({"name": name, "lon": lon, "lat": lat})
+                    items.append({"group": group, "name": name, "weight": weight, "place": pid})
+            self.key_profiles.append({"key": key, "name": profile.get("name", key),
+                                      "description": profile.get("description", ""), "items": items,
+                                      "skipped": skipped})
+        if self.key_places:
+            pts = np.column_stack(geo.to_xy([p["lon"] for p in self.key_places], [p["lat"] for p in self.key_places]))
             self.key_xy = pts
-            self.key_weight = np.array([r["weight"] for r in self.key_dest])
             self.key_snap = {}
             for kind, tree, ids in (("transit", self.walk_tree, self.walk_ids), ("car", self.drive_tree, self.drive_ids)):
                 d, i = tree.query(pts, k=ORIGIN_K)
                 self.key_snap[kind] = (ids[i], d * config.STRAIGHT_LINE_DETOUR)
 
     def _key_destinations(self, req: Request, dist: np.ndarray, x: float, y: float) -> dict | None:
-        """Travel time from the origin to each key destination, and their weighted average.
-        Destinations beyond the routing cut-off count as the cut-off."""
-        if not self.key_dest:
+        """For each profile: the travel time from the origin to each of its places, group
+        averages and the weighted average. Places beyond the routing cut-off count as the cut-off."""
+        if not self.key_places:
             return None
         v = req.walk_kmh / 3.6
         nodes, metres = self.key_snap[req.mode]
@@ -245,21 +251,28 @@ class Engine:
         limit = config.MAX_MINUTES * 60
         reached = t <= limit
         minutes = np.where(reached, t, limit) / 60
-        w = self.key_weight
 
-        def average(sel: np.ndarray) -> float | None:
-            return round(float((w[sel] * minutes[sel]).sum() / w[sel].sum()), 1) if w[sel].sum() > 0 else None
+        def summary(profile: dict) -> dict:
+            items = profile["items"]
+            place = np.array([i["place"] for i in items], np.int64)
+            w, m = np.array([i["weight"] for i in items]), minutes[place]
 
-        groups = list(dict.fromkeys(r["group"] for r in self.key_dest))
-        in_group = {g: np.array([r["group"] == g for r in self.key_dest]) for g in groups}
-        return {
-            "weighted_min": average(np.ones(len(w), bool)),
-            "unreachable": int((~reached).sum()),
-            "groups": [{"name": g, "weight": round(float(w[in_group[g]].sum()), 2), "minutes": average(in_group[g])}
-                       for g in groups],
-            "items": [r | {"minutes": round(float(m), 1) if ok else None}
-                      for r, m, ok in zip(self.key_dest, minutes, reached)],
-        }
+            def average(sel: np.ndarray) -> float | None:
+                return round(float((w[sel] * m[sel]).sum() / w[sel].sum()), 1) if w[sel].sum() > 0 else None
+
+            groups = list(dict.fromkeys(i["group"] for i in items))
+            in_group = {g: np.array([i["group"] == g for i in items]) for g in groups}
+            return {
+                "weighted_min": average(np.ones(len(items), bool)),
+                "unreachable": int((~reached[np.unique(place)]).sum()),
+                "groups": [{"name": g, "weight": round(float(w[in_group[g]].sum()), 2), "minutes": average(in_group[g])}
+                           for g in groups],
+                "items": [{"group": i["group"], "name": i["name"], "weight": i["weight"],
+                           "lon": self.key_places[i["place"]]["lon"], "lat": self.key_places[i["place"]]["lat"],
+                           "minutes": round(float(minutes[i["place"]]), 1) if reached[i["place"]] else None}
+                          for i in items],
+            }
+        return {p["key"]: summary(p) for p in self.key_profiles if p["items"]}
 
     # --- graph assembly ---------------------------------------------------------
 

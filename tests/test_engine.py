@@ -102,17 +102,29 @@ def test_land_cells_include_land_without_footpaths(engine):
 
 def test_key_destinations_score(engine):
     from isochrone.engine import Request
-    k = iso(engine)["key_destinations"]
-    assert not engine.key_skipped  # every sample station name resolves
+    profiles = iso(engine)["key_destinations"]
+    assert not [p["skipped"] for p in engine.key_profiles if p["skipped"]]  # every place name resolves
+    assert set(profiles) == {p["key"] for p in engine.key_profiles}
+    k = profiles["general"]
     assert sum(g["weight"] for g in k["groups"]) == pytest.approx(100)
-    assert k["unreachable"] == 0
+    assert all(p["unreachable"] == 0 for p in profiles.values())
     assert next(i for i in k["items"] if i["name"] == "Raffles Place")["minutes"] < 5  # we start there
     tuas = engine.isochrone(Request(lon=103.6369, lat=1.3404))["key_destinations"]
-    assert tuas["weighted_min"] > k["weighted_min"] + 20
+    assert tuas["general"]["weighted_min"] > k["weighted_min"] + 20
     # each destination's time is the router's total for that trip
     item = next(i for i in k["items"] if i["name"] == "Changi Airport")
     route = engine.route(Request(lon=RAFFLES[0], lat=RAFFLES[1]), item["lon"], item["lat"])
     assert item["minutes"] == pytest.approx(route["total_s"] / 60, abs=0.1)
+
+
+def test_key_destination_profiles_favour_their_places(engine):
+    from isochrone.engine import Request
+    score = lambda lon, lat, key: engine.isochrone(Request(lon=lon, lat=lat))["key_destinations"][key]["weighted_min"]
+    woodlands = PLACES["woodlands"]
+    assert score(*RAFFLES, "cbd") < score(*RAFFLES, "general") < score(*woodlands, "general")
+    assert score(*woodlands, "jb") < score(*RAFFLES, "jb")                 # near the Causeway
+    assert score(*PLACES["jurong_east"], "industrial") < score(*RAFFLES, "industrial")
+    assert score(103.7650, 1.3150, "student") < score(*RAFFLES, "student")  # Clementi: NUS and the polys
 
 
 def test_times_to_a_place_match_the_router(engine):

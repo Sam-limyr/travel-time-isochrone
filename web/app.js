@@ -43,6 +43,7 @@ const state = {
   bus: true, rail: true, voiddeck: true, parking: 0,
   style: "smooth", maxMin: 90, bandSize: 15, palette: "blues", reverse: false, opacity: 0.7,
   ovMrt: true, ovBus: false, ovStops: false,
+  profile: null,  // key-destinations profile (meta.key_destinations[].key)
   theme: "auto", basemap: "onemap",
   view: null,  // [lat, lon, zoom] restored from the URL
 };
@@ -95,6 +96,7 @@ function writeHash() {
   p.set("pal", state.palette);
   if (state.reverse) p.set("rev", "1");
   p.set("ov", (state.ovMrt ? "m" : "") + (state.ovBus ? "b" : "") + (state.ovStops ? "s" : ""));
+  if (state.profile) p.set("kp", state.profile);
   if (map) {
     const c = map.getCenter();
     p.set("v", `${c.lat.toFixed(4)},${c.lng.toFixed(4)},${map.getZoom().toFixed(2)}`);
@@ -119,6 +121,7 @@ function readHash() {
   state.res = pick("res", meta.resolutions.map((r) => r.key)) || state.res;
   state.style = pick("style", ["smooth", "bands"]) || state.style;
   state.palette = pick("pal", PALETTES.map((q) => q.key)) || state.palette;
+  state.profile = pick("kp", meta.key_destinations.map((q) => q.key)) || meta.key_destinations[0]?.key || null;
   state.reverse = p.get("rev") === "1";
   const num = (k, lo, hi, dflt) => { const v = Number(p.get(k)); return p.has(k) && v >= lo && v <= hi ? v : dflt; };
   state.walk = num("walk", meta.walk_kmh.min, meta.walk_kmh.max, meta.walk_kmh.default);
@@ -175,6 +178,9 @@ function buildControls() {
     palettes.append(el("label", { title: q.name }, input, el("span", { className: "ramp" })));
   }
 
+  const profiles = $("#key-profile");
+  for (const q of meta.key_destinations) profiles.append(el("option", { value: q.key }, q.name));
+
   const walk = $("#walk");
   walk.min = meta.walk_kmh.min; walk.max = meta.walk_kmh.max;
   const ticks = [
@@ -202,6 +208,7 @@ function buildControls() {
   $("#use-bus").checked = state.bus; $("#use-rail").checked = state.rail; $("#use-voiddeck").checked = state.voiddeck;
   $("#ov-mrt").checked = state.ovMrt; $("#ov-bus").checked = state.ovBus; $("#ov-stops").checked = state.ovStops;
   $("#theme").value = state.theme;
+  if (state.profile) profiles.value = state.profile;
   syncControlVisibility();
   paintPaletteSwatches();
 
@@ -244,6 +251,7 @@ function buildControls() {
     if (e.key === "Escape" && !$("#route-section").hidden && !typing) clearRoute();
   });
   $("#key-score").addEventListener("click", showKeySection);
+  profiles.addEventListener("change", () => { state.profile = profiles.value; writeHash(); renderKeyDestinations(); });
   $("#my-places-example").addEventListener("click", loadExample);
   $("#panel-toggle").addEventListener("click", () => {
     const panel = $("#panel");
@@ -1189,12 +1197,16 @@ function updateTables() {
 /* --- key destinations ------------------------------------------------------ */
 
 function renderKeyDestinations() {
-  const k = lastResult && lastResult.key_destinations;
+  // every profile's summary comes with each result, so switching profile needs no new search
+  const k = lastResult && lastResult.key_destinations && lastResult.key_destinations[state.profile];
   const show = !!(k && k.weighted_min !== null);
   $("#key-section").hidden = !show;
   $("#key-score").hidden = !show;
   if (!show) return;
-  // weights are shown as shares, whatever scale the CSV uses
+  const profile = meta.key_destinations.find((q) => q.key === state.profile);
+  $("#key-profile-desc").textContent = profile.description;
+  $("#key-score-profile").textContent = profile.name;
+  // weights are shown as shares, whatever scale the file uses
   const total = k.groups.reduce((s, g) => s + g.weight, 0);
   const share = (w) => `${+((100 * w) / total).toFixed(1)}%`;
   const mins = (m) => (m === null ? "—" : fmtMin(m));
@@ -1216,9 +1228,9 @@ function renderKeyDestinations() {
   const unreached = $("#key-unreached");
   unreached.hidden = !k.unreachable;
   unreached.textContent = `${k.unreachable} of them can't be reached within ${meta.max_minutes} minutes, and count as ${meta.max_minutes}.`;
-  const skipped = meta.key_destinations.skipped;
+  const skipped = profile.skipped;
   $("#key-skipped").hidden = !skipped.length;
-  $("#key-skipped").textContent = `Skipped, as no station has this name: ${skipped.join(", ")}.`;
+  $("#key-skipped").textContent = `Skipped, as no station has this name and no coordinates were given: ${skipped.join(", ")}.`;
 }
 
 function showKeySection() {

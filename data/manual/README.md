@@ -65,20 +65,29 @@ speed of 4.8 km/h and scale with the app's slider. They cover entrances above th
 platform; from entrances farther away the extra distance is walked. Restart the server
 after editing.
 
-## `key_destinations.csv`
+## `key_destinations.toml`
 
-The weighted places behind the **Key destinations** score: the app reports the
-weighted average travel time from the start point to them. The sample rows are
-MRT stations with the general-purpose destination weights from the
-*the-fastest-journey* project (`mrt_distance.py`, `get_weights()`), which sum to 100.
+Preset profiles for the **Key destinations** score: for the chosen profile, the app
+reports the weighted average travel time from the start point to its places. Every
+profile is computed with each search, so switching profile is instant.
 
-| Column | Meaning |
-|---|---|
-| `group` | Heading the row is summarised under (e.g. `Work: CBD`) |
-| `name` | Place name; with no coordinates, the MRT/LRT station of that name |
-| `weight` | Relative importance; any scale, shown as shares of the total |
-| `lon`, `lat` | Optional coordinates, for places that aren't stations |
+```toml
+[general]                                # the key, kept in the app's URL
+name = "General"                         # shown in the profile list
+description = "…"                        # shown under it
 
-A station that appears in two groups (Orchard is both a CBD workplace and a
-shopping area) simply has two rows, and its weights add up. Names that match no
-station are skipped, and the app notes them. Restart the server after editing.
+[general.groups."Work: CBD"]             # a group, summarised on its own
+"Raffles Place" = 10.0                   # an MRT/LRT station's name and its weight
+"Woodlands Checkpoint" = { weight = 14, lat = 1.4459, lon = 103.7686 }  # anywhere else
+```
+
+`general` is the sample list of the *the-fastest-journey* project, copied unchanged from
+`mrt_distance/mrt_distance.py`, `get_weights()`, `possible_general_raw_percentage_weights`:
+the same stations and weights, with its category names kept in comments. A test checks it
+still matches. The other profiles are illustrations; their places that aren't stations
+use coordinates from OpenStreetMap (September 2026).
+
+Weights can use any scale, as the app shows each as a share of the profile's total; the
+presets sum to 100. A place can appear in several groups (Orchard is both a CBD workplace
+and a shopping area), and its weights add up. Station names that match nothing, with no
+coordinates given, are skipped and the app lists them. Restart the server after editing.

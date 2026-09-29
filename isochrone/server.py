@@ -55,7 +55,9 @@ def meta() -> dict:
         "parking_min": list(config.PARKING_OPTIONS_MIN),
         "max_minutes": config.MAX_MINUTES,
         "places": [{"name": n, "lon": lon, "lat": lat} for n, lon, lat in config.PLACES],
-        "key_destinations": {"count": len(engine.key_dest), "skipped": engine.key_skipped},
+        "key_destinations": [{"key": p["key"], "name": p["name"], "description": p["description"],
+                              "count": len(p["items"]), "skipped": p["skipped"]}
+                             for p in engine.key_profiles if p["items"]],
         "train_frequencies": _train_frequencies(),
         "station_access": {"s_per_m": config.STATION_ACCESS_S_PER_M,
                            "rows": [{"label": r["label"], "depth_m": r["depth_m"], "seconds": round(r["seconds"])}

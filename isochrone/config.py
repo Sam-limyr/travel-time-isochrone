@@ -124,9 +124,9 @@ GRID_MAX_SNAP_M = 400.0  # cells farther than this from any footpath are left bl
 MAX_MINUTES = 180        # routing cut-off
 
 
-# Weighted places for the "key destinations" score: group, name, weight, and optional
-# lon/lat (rows without coordinates name an MRT/LRT station). See data/manual/README.md.
-KEY_DESTINATIONS = MANUAL / "key_destinations.csv"
+# Preset profiles of weighted places for the "key destinations" score: per profile, groups
+# of places (an MRT/LRT station's name, or coordinates) and weights. See data/manual/README.md.
+KEY_DESTINATIONS = MANUAL / "key_destinations.toml"
 
 # Published train frequencies (minutes between trains) per line section, peak and
 # off-peak: the source of train waits. Sections without a row keep the GTFS timetable's.
