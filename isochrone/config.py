@@ -77,9 +77,18 @@ BUS_SCHEDULE_FACTOR_RANGE = (0.6, 1.8)  # schedule/prior ratios outside this are
 # README). Set a factor to 1.0 to use the raw timetable; LRTs have no reference data.
 RAIL_RUNTIME_FACTOR = {"EWL": 0.77, "NSL": 0.94, "NEL": 0.78, "CCL": 0.80, "DTL": 0.76, "TEL": 0.85,
                        "BPLRT": 1.0, "SKLRT": 1.0, "PGLRT": 1.0}
-STATION_ENTRY_S = 60.0    # fare gates + escalators, street to platform
-STATION_EXIT_S = 45.0
-STATION_WALK_EXTRA_M = 30.0  # platform-level walking on top of exit-to-platform distance
+# Getting between the street and a platform (either way) takes a time per station, given
+# in data/manual/station_access.csv at the default walking pace and scaled with walking
+# speed: a published platform depth at STATION_ACCESS_S_PER_M, otherwise a default by
+# line (30 s above ground, 75-120 s underground).
+STATION_ACCESS = MANUAL / "station_access.csv"
+STATION_ACCESS_S_PER_M = 4.0  # escalators at 0.75 m/s up a 30° slope (2.7 s per metre of rise) + walks between flights
+STATION_ACCESS_FALLBACK_S = 75.0  # platforms the file doesn't cover
+# That time covers entrances above the platform: within STATION_SPAN_M of its centre,
+# plus the escalators' horizontal run. From farther entrances (long underpasses, the far
+# side of an interchange) the rest of the distance is walked, straight line x detour.
+STATION_SPAN_M = 50.0
+ESCALATOR_RUN_PER_M = 1.73  # horizontal metres per metre of rise on a 30° escalator
 DEFAULT_INTERCHANGE_S = 180.0  # leisurely transfer time where the CSV has no entry
 DEFAULT_SAME_LINE_TRANSFER_S = 60.0  # switching platforms on the same line
 

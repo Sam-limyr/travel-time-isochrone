@@ -1,0 +1,36 @@
+stations,label,depth_m,seconds,source
+DT21,Bencoolen,43,,Wikipedia: Bencoolen MRT station (deepest on the network)
+DT15,Promenade (DTL),42,,Wikipedia: Promenade MRT station
+TE20,Marina Bay (TEL),40,,Wikipedia: Marina Bay MRT station (lower platform)
+TE19,Shenton Way,38,,Wikipedia: Shenton Way MRT station
+CC2,Bras Basah,35,,Wikipedia: Bras Basah MRT station
+TE9,Caldecott (TEL),35,,Wikipedia: Caldecott MRT station
+DT10,Stevens (DTL),34.2,,Wikipedia: Stevens MRT station
+TE18,Maxwell,31,,Wikipedia: Maxwell MRT station
+CC32,Prince Edward Road,30,,Wikipedia: Prince Edward Road MRT station
+TE14,Orchard (TEL),30,,Wikipedia: Orchard MRT station
+CC31,Cantonment,28,,Wikipedia: Cantonment MRT station
+NE6,Dhoby Ghaut (NEL),28,,Wikipedia: Dhoby Ghaut MRT station (its deepest point)
+TE24,Katong Park,26.8,,Wikipedia: Katong Park MRT station
+DT14,Bugis (DTL),26,,Wikipedia: Bugis MRT station
+NE4,Chinatown (NEL),25,,Wikipedia: Chinatown MRT station
+DT35,Expo (DTL),25,,Wikipedia: Expo MRT station
+NE5,Clarke Quay,22.2,,Wikipedia: Clarke Quay MRT station (excavation depth)
+EW13 NS25,City Hall,22,,Wikipedia: City Hall MRT station
+TE3,Woodlands South,22,,Wikipedia: Woodlands South MRT station
+TE26,Marine Parade,22,,Wikipedia: Marine Parade MRT station
+CC5,Nicoll Highway,21.5,,Wikipedia: Nicoll Highway MRT station
+TE15,Great World,21,,Wikipedia: Great World MRT station
+CC30,Keppel,20,,Wikipedia: Keppel MRT station
+TE7,Bright Hill,20,,Wikipedia: Bright Hill MRT station
+TE8,Upper Thomson,20,,Wikipedia: Upper Thomson MRT station
+CG2,Changi Airport,18.5,,Wikipedia: Changi Airport MRT station
+NE1,HarbourFront (NEL),18.5,,Wikipedia: HarbourFront MRT station (excavation depth)
+DT20,Fort Canning,17.5,,Wikipedia: Fort Canning MRT station
+TE23,Tanjong Rhu,15.3,,Wikipedia: Tanjong Rhu MRT station
+NS20,Novena,15,,Wikipedia: Novena MRT station
+NS21,Newton (NSL),15,,Wikipedia: Newton MRT station
+NS18-NS28 EW11-EW17,"Other underground stations: North–South, East–West lines",,75,Default; their published depths are 15–22 m
+NE CC CE,"Other underground stations: North East, Circle lines",,90,Default; their published depths are 18–35 m
+DT TE,"Other underground stations: Downtown, Thomson–East Coast lines",,120,Default; their published depths are 15–43 m
+NS EW CG BP STC SE SW PTC PE PW,"Elevated and at-grade stations, LRTs",,30,Default

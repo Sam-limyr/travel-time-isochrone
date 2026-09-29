@@ -9,7 +9,9 @@ Riding on through a station is only allowed along platform sequences that real
 trips run. Waits come from published peak and off-peak frequencies per line section
 (``published_rail_waits``, applied when the engine loads); the timetable's own gaps
 are the fallback, and there segments shared by several service patterns (e.g. the
-Circle Line) get their combined frequency.
+Circle Line) get their combined frequency. Getting between the street and a platform
+takes a time per station (``station_access_seconds``): from its published depth where
+known, otherwise by line and whether it is underground.
 """
 from __future__ import annotations
 
@@ -246,8 +248,9 @@ def _code_parts(code: str) -> tuple[str, int | None]:
 
 
 def _covers(token: str):
-    """Station-code test for one token of a train_frequencies.csv row: a range such as
-    'EW29-EW33', or a prefix such as 'CG' (every code that starts with it)."""
+    """Station-code test for one token of a data/manual table's "stations" column: a range
+    such as 'EW29-EW33', a code such as 'DT21', or a prefix such as 'CG' (every code that
+    starts with it)."""
     m = re.fullmatch(r"([A-Z]+)(\d+)-\1(\d+)", token)
     if m:
         prefix, lo, hi = m.group(1), int(m.group(2)), int(m.group(3))
@@ -256,6 +259,8 @@ def _covers(token: str):
             p, n = _code_parts(code)
             return p == prefix and n is not None and lo <= n <= hi
         return in_range
+    if _code_parts(token)[1] is not None:
+        return lambda code: code == token
     return lambda code: _code_parts(code)[0] == token
 
 
@@ -285,6 +290,36 @@ def published_rail_waits(path, platform_code: list[str], hop: np.ndarray,
     return waits, {f"{r['line']} {r['section']}": n for r, n in zip(rows, counts)}
 
 
+def station_access_seconds(path, platform_code: list[str]) -> tuple[np.ndarray, list[dict]]:
+    """Seconds between the street and each platform at the default walking pace
+    (data/manual/station_access.csv).
+
+    A platform takes the first row whose stations include its code: a published depth,
+    converted at STATION_ACCESS_S_PER_M, or a default in seconds. Platforms no row covers
+    get STATION_ACCESS_FALLBACK_S. Returns the seconds, and each row with its seconds and
+    the station codes it set.
+    """
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+    tests = [[_covers(t) for t in r["stations"].split()] for r in rows]
+    per_row = []
+    for r in rows:
+        depth = float(r["depth_m"]) if (r.get("depth_m") or "").strip() else None
+        per_row.append(depth * config.STATION_ACCESS_S_PER_M if depth is not None else float(r["seconds"]))
+    seconds = np.full(len(platform_code), config.STATION_ACCESS_FALLBACK_S)
+    codes: list[set[str]] = [set() for _ in rows]
+    for p, code in enumerate(platform_code):
+        for k in range(len(rows)):
+            if any(t(code) for t in tests[k]):
+                seconds[p] = per_row[k]
+                codes[k].add(code)
+                break
+    return seconds, [{"stations": r["stations"], "label": r["label"],
+                      "depth_m": float(r["depth_m"]) if (r.get("depth_m") or "").strip() else None,
+                      "seconds": s, "source": r["source"], "codes": sorted(c)}
+                     for r, s, c in zip(rows, per_row, codes)]
+
+
 @dataclass
 class RailModel:
     platform_id: list[str]
@@ -296,8 +331,7 @@ class RailModel:
     entrance_id: list[str]
     entrance_x: np.ndarray
     entrance_y: np.ndarray
-    access: np.ndarray                 # (A, 2) int: entrance idx, platform idx
-    access_m: np.ndarray               # (A,) walking metres inside the station
+    access: np.ndarray                 # (A, 2) int: entrance idx, platform idx (same station)
     transfer: np.ndarray               # (T, 2) int: from platform, to platform
     transfer_s: np.ndarray             # (T,) leisurely seconds
     transfer_source: list[str]         # "csv" or "default"
@@ -394,12 +428,7 @@ def build_rail(day: date) -> RailModel:
     platforms_at: dict[str, list[int]] = defaultdict(list)
     for i, st in enumerate(station_of):
         platforms_at[st].append(i)
-    access, access_m = [], []
-    for e, s in enumerate(entrances):
-        for p in platforms_at.get(s["parent_station"], []):
-            access.append((e, p))
-            access_m.append(np.hypot(ex[e] - px[p], ey[e] - py[p]) * config.STRAIGHT_LINE_DETOUR
-                            + config.STATION_WALK_EXTRA_M)
+    access = [(e, p) for e, s in enumerate(entrances) for p in platforms_at.get(s["parent_station"], [])]
 
     transfer, transfer_s, transfer_src = _transfers(pl, station_of, platforms_at)
 
@@ -417,7 +446,7 @@ def build_rail(day: date) -> RailModel:
         platform_line=[line_of(s["stop_code"]) for s in pl], platform_station=station_of,
         platform_x=px, platform_y=py,
         entrance_id=[s["stop_id"] for s in entrances], entrance_x=ex, entrance_y=ey,
-        access=np.array(access, np.int32).reshape(-1, 2), access_m=np.array(access_m, np.float32),
+        access=np.array(access, np.int32).reshape(-1, 2),
         transfer=np.array(transfer, np.int32).reshape(-1, 2), transfer_s=np.array(transfer_s, np.float32),
         transfer_source=transfer_src,
         hop=hops, hop_wait=hop_wait, hop_run=hop_run, hop_dwell=hop_dwell,

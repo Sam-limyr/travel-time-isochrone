@@ -28,7 +28,7 @@ hours of 7am to 9am and about 5 to 7 minutes during off-peak times".
 | Column | Meaning |
 |---|---|
 | `line`, `section` | Label (shown in the app's About panel) |
-| `stations` | Station codes the row covers: ranges such as `EW29-EW33`, or prefixes such as `CG` (all codes starting with it), separated by spaces |
+| `stations` | Station codes the row covers, separated by spaces: ranges such as `EW29-EW33`, codes such as `DT21`, or prefixes such as `CG` (all codes starting with it) |
 | `peak_min`, `offpeak_min` | Headway range in minutes, e.g. `2-3` |
 | `source` | Where the figures come from |
 
@@ -37,6 +37,33 @@ share an end station (Joo Koon, Yishun) are split by row order. A wait is then d
 like a bus's: half the middle of the range on average, the top of the range at worst.
 Segments with no row (the Bukit Panjang LRT, which publishes no frequencies) keep waits
 from the GTFS timetable's gaps. Restart the server after editing.
+
+## `station_access.csv`
+
+Time to get between the street and a platform, either way: escalators, stairs, fare
+gates and corridors. No per-station timings are published, so it follows from depth:
+escalators at 0.75 m/s up a 30° slope take 2.7 s per metre of rise, and the walks
+between flights bring that to about 4 s per metre (`STATION_ACCESS_S_PER_M` in
+`isochrone/config.py`). Depths were collected in September 2026 from the stations'
+Wikipedia articles, which cite LTA and press figures. Depths quoted there for future
+Cross Island Line platforms (Hougang, Pasir Ris, King Albert Park) and the RTS Link
+station are left out.
+
+| Column | Meaning |
+|---|---|
+| `stations` | Station codes the row covers, as in `train_frequencies.csv` |
+| `label` | Name shown in the app's About panel |
+| `depth_m` | Published platform depth in metres, if known (time = 4 s per metre) |
+| `seconds` | Otherwise, the time in seconds |
+| `source` | Where the depth comes from |
+
+A platform takes the first row that covers its code, so the stations with a published
+depth come first, then defaults by line: 30 s above ground (7.5 m up), 75 s underground
+on the North–South and East–West lines, 90 s on the North East and Circle lines and
+120 s on the Downtown and Thomson–East Coast lines. Times are at the default walking
+speed of 4.8 km/h and scale with the app's slider. They cover entrances above the
+platform; from entrances farther away the extra distance is walked. Restart the server
+after editing.
 
 ## `key_destinations.csv`
 

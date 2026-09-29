@@ -1241,6 +1241,7 @@ function buildAbout() {
     el("li", {}, "Public transport: walk along real footpaths (and through HDB void decks), wait, ride, change. One shortest-path search per click."),
     el("li", {}, "Bus waits come from LTA's published frequency for each service and time band (most run more often in the peaks); running times from LTA's scheduled times, adjusted for peak traffic."),
     el("li", {}, "Train waits come from each line's published peak and off-peak frequency (below): half the gap between trains on average, the longest gap at worst. Running times come from the official timetable, calibrated per line as the feed rounds them up to whole minutes. Interchange walks use the Reddit-measured timings, scaled by walking speed."),
+    el("li", {}, "Getting between the street and a platform takes a time per station (below), scaled by walking speed: deeper stations take longer. Entrances well away from the platform add the extra walk."),
     el("li", {}, "Car: typical-congestion speeds by road class for the time band, with peaks calibrated to LTA's measured peak-hour averages (no live traffic). The start and end are joined to the road network on foot."),
     el("li", {}, "Limitations: no real-time data; boarding the first of several buses that go your way is not modelled (waits can be pessimistic at busy stops); cross-border and ferry services are excluded."),
   );
@@ -1255,6 +1256,26 @@ function buildAbout() {
         el("thead", {}, el("tr", {}, el("th", {}, "Line"), el("th", { className: "num" }, "Peak"), el("th", { className: "num" }, "Off-peak"))),
         el("tbody", {}, ...rows)),
       el("p", { className: "note" }, "Operators' published frequencies (peak 07:30–09:30 and 17:30–19:30), as listed on SGWiki; LTA quotes 2–3 minutes at peak and 5–7 off-peak network-wide. The Bukit Panjang LRT publishes none, so it uses the timetable's gaps."));
+  }
+  const access = meta.station_access.rows;
+  if (access.length) {
+    // street-to-platform times (data/manual/station_access.csv), at the default walking pace
+    const minutes = (s) => +(s / 60).toFixed(1);
+    const fmtS = (s) => (s < 90 ? `${s} s` : `${minutes(s)} min`);
+    const depths = access.filter((r) => r.depth_m !== null);
+    const rows = access.filter((r) => r.depth_m === null).sort((a, b) => a.seconds - b.seconds).map((r) => el("tr", {},
+      el("td", {}, r.label), el("td", { className: "num" }, fmtS(r.seconds))));
+    if (depths.length) {
+      const [lo, hi] = [depths.reduce((a, b) => (b.depth_m < a.depth_m ? b : a)), depths.reduce((a, b) => (b.depth_m > a.depth_m ? b : a))];
+      rows.push(el("tr", {},
+        el("td", {}, `${depths.length} stations with a published depth, from ${lo.label} (${lo.depth_m} m) to ${hi.label} (${hi.depth_m} m)`),
+        el("td", { className: "num" }, `${minutes(lo.seconds)}–${minutes(hi.seconds)} min`)));
+    }
+    box.append(el("h3", {}, "Street to platform"),
+      el("table", { className: "data" },
+        el("thead", {}, el("tr", {}, el("th", {}, "Stations"), el("th", { className: "num" }, `At ${meta.walk_kmh.default} km/h`))),
+        el("tbody", {}, ...rows)),
+      el("p", { className: "note" }, `Escalators, stairs, fare gates and corridors, either way. A published depth counts ${meta.station_access.s_per_m} s per metre: escalators at 0.75 m/s up a 30° slope, plus the walks between flights. Other stations take a default by line.`));
   }
 }
 

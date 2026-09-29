@@ -226,7 +226,7 @@ def build(day: date | None = None) -> None:
         entrance_x=rail.entrance_x.astype(np.float32), entrance_y=rail.entrance_y.astype(np.float32),
         entrance_link_entrance=ent_item, entrance_link_node=ent_node, entrance_link_m=ent_m,
         platform_x=rail.platform_x.astype(np.float32), platform_y=rail.platform_y.astype(np.float32),
-        access=rail.access, access_m=rail.access_m, transfer=rail.transfer, transfer_s=rail.transfer_s,
+        access=rail.access, transfer=rail.transfer, transfer_s=rail.transfer_s,
         hop=rail.hop, hop_wait=rail.hop_wait, hop_run=rail.hop_run, hop_dwell=rail.hop_dwell,
         through=rail.through, through_bands=rail.through_bands,
     )

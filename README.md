@@ -94,7 +94,8 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   and most buses run more often at peak too.
 - **Waiting at stops**: *best case* (every bus and train turns up as you arrive),
   *average* (you arrive at a random time) or *worst case* (you just missed each one).
-- **Walking speed** slider (3–6.5 km/h). MRT interchange walks scale with it too (below).
+- **Walking speed** slider (3–6.5 km/h). Getting to MRT platforms and changing lines
+  scale with it too (below).
 - **Buses / MRT / HDB void-deck shortcuts** can each be switched off to compare.
 - **Parking allowance** (car mode): 0, 2 or 5 minutes added at the destination.
 - **Resolution**: low (250 m), medium (100 m) or high (50 m) grid cells.
@@ -158,8 +159,30 @@ Peak-band factors (×1.10 AM, ×1.12 PM, ×0.92 evening) cover traffic.
 **Trains** use LTA's official GTFS timetable (on DataMall since August 2026) for a
 reference weekday: 6,032 trips over 426 platforms. It sets running times and where and
 when trains run, per track segment; riding through a station is only allowed along
-platform sequences that real trips run. Station access uses LTA's exit coordinates plus
-60 s to enter and 45 s to leave (fare gates and escalators).
+platform sequences that real trips run.
+
+**Stations**: getting between the street and a platform, either way, takes a time per
+station, in [`data/manual/station_access.csv`](data/manual/station_access.csv). It covers
+escalators, stairs, fare gates and corridors, is given at the default 4.8 km/h and scales
+with walking speed:
+
+| Stations | Street to platform |
+|---|---|
+| Elevated and at-grade stations, LRTs | 30 s |
+| Other underground stations: North–South and East–West lines | 75 s |
+| Other underground stations: North East and Circle lines | 90 s |
+| Other underground stations: Downtown and Thomson–East Coast lines | 2 min |
+| 31 stations with a published depth, from Novena (15 m) to Bencoolen (43 m) | 4 s per metre: 1–2.9 min |
+
+No per-station timings are published, so the time comes from depth. Escalators run at
+0.75 m/s at peak; up a 30° slope that is 2.7 s per metre of rise, and the walks between
+flights bring it to about 4 s per metre. Depths come from the stations' Wikipedia
+articles (which cite LTA and press figures); the defaults are the same rule at typical
+depths (7.5 m up to an elevated platform, 19, 22 and 30 m down), and the published
+depths of the other stations on each line fall around them. That time covers entrances
+above the platform: those within 50 m of its centre plus the escalators' horizontal run.
+From farther entrances, such as long underpasses or the far side of an interchange, the
+extra distance is walked. Station exits are LTA's, from the timetable feed.
 
 **Train waits** come from the operators' published frequencies for each line, or line
 section, at peak and off-peak, in
@@ -203,8 +226,8 @@ expressways and 29 km/h on arterial roads in 2025
 start and destination are joined to the nearest road on foot.
 
 **Several places**: trips *to* a place aren't the reverse of trips from it (one-way
-roads and bus loops, waits at the boarding stop, 60 s to enter a station but 45 s to
-leave), so each place gets one search over the reversed graph: every edge flipped, with
+roads and bus loops, and waits at the boarding stop rather than the last one), so each
+place gets one search over the reversed graph: every edge flipped, with
 the same weights. That gives every spot's time to the place directly, and it matches the
 router's forward itinerary to within grid rounding. The browser averages the places' grids
 cell by cell, so a new place costs one search (about 0.2 s) and weights apply instantly.
@@ -233,11 +256,11 @@ Raffles Place, with average waits:
 
 | To | AM peak | Midday |
 |---|---|---|
-| Jurong East | 29 | 30 |
-| Tampines | 33 | 34 |
-| Changi Airport | 43 | 44 |
-| Woodlands | 50 | 52 |
-| Tuas Link | 53 | 54 |
+| Jurong East | 28 | 29 |
+| Tampines | 32 | 33 |
+| Changi Airport | 42 | 43 |
+| Woodlands | 49 | 51 |
+| Tuas Link | 52 | 53 |
 
 These are in line with typical journey-planner times. The development commands below
 reproduce these checks.
@@ -249,6 +272,7 @@ reproduce these checks.
 | Bus stops, services, routes, headways | LTA DataMall | fetched 26 Sep 2026 |
 | MRT/LRT timetable, platforms, station exits | LTA DataMall GTFS Schedule (Train) | published 26 Sep 2026; service day Mon 28 Sep 2026 |
 | MRT/LRT peak and off-peak frequencies | Operators' figures as listed on SGWiki; LTA's network-wide figures | Sep 2026 |
+| MRT station depths | Stations' Wikipedia articles (LTA and press figures) | Sep 2026 |
 | Footpaths and roads | OpenStreetMap (openstreetmap.fr extract) | 25 Sep 2026 |
 | MRT/LRT line shapes (overlay) | OpenStreetMap route relations | 25 Sep 2026 |
 | HDB building footprints | HDB via data.gov.sg | fetched 26 Sep 2026 |
@@ -298,7 +322,8 @@ isochrone/
 web/             index.html, app.js, palettes.js (colour schemes), style.css,
                  vendored MapLibre GL JS 5.24
 data/raw/        cached public datasets (committed)
-data/manual/     hand-curated inputs (MRT interchange timings, train frequencies, key destinations)
+data/manual/     hand-curated inputs (MRT interchange timings, train frequencies, station
+                 depths, key destinations)
 scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
@@ -311,7 +336,7 @@ Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) a
 ## Development
 
 ```bash
-poetry run pytest                                     # 44 unit + integration tests
+poetry run pytest                                     # 46 unit + integration tests
 poetry run python scripts/probe.py "Jurong East MRT"  # times to well-known places from an origin
 poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/data/travel_times_final_20250706.csv
 poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
@@ -341,6 +366,10 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
   frequencies throughout, though the operators' peaks start and end half an hour later
   (07:30–09:30, 17:30–19:30). The frequencies are as listed on SGWiki; the operators'
   own pages weren't checked.
+- **Modelled, not measured, station times**: street-to-platform times follow from
+  published depths for 31 stations and from a default by line for the rest. Escalator
+  rides scale with walking speed along with the walks, and queues at escalators after a
+  crowded train aren't modelled.
 - **Timetable quirks**: LTA's timetable (v0.1) starts every train at a terminus, so trips
   are grouped into time bands by departure from the terminus (which decides where trains
   run in each band, and the Bukit Panjang LRT's waits). Its whole-minute running times are

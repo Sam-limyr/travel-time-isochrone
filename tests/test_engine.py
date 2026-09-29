@@ -155,6 +155,25 @@ def test_transfer_times_scale_with_walking_speed(engine):
     assert np.allclose(brisk, np.maximum(engine.t_param[sel] / 1.5, 1e-3))
 
 
+def test_station_access_by_depth_and_line(engine):
+    from isochrone.engine import K_STATION_IN, K_STATION_OUT, Request
+    codes = engine.meta["names"]["platform_code"]
+    access = lambda code: engine.platform_access_s[codes.index(code)]
+    assert access("EW23") == 30    # Clementi, elevated
+    assert access("NS24") == 75    # Dhoby Ghaut, underground North-South Line
+    assert access("DT5") == 120    # Beauty World, Downtown Line
+    assert access("DT21") == pytest.approx(43 * config.STATION_ACCESS_S_PER_M)  # Bencoolen, 43 m down
+    assert not [r["stations"] for r in engine.station_access if not r["codes"]]  # every row applies
+    # the same both ways, and scaled with walking speed
+    req = Request(lon=RAFFLES[0], lat=RAFFLES[1])
+    brisk = Request(lon=RAFFLES[0], lat=RAFFLES[1], walk_kmh=config.WALK_KMH_DEFAULT * 1.25)
+    ins, outs = engine.t_sel[K_STATION_IN], engine.t_sel[K_STATION_OUT]
+    w, w_brisk = engine.transit_weights(req), engine.transit_weights(brisk)
+    assert np.allclose(np.sort(w[ins]), np.sort(w[outs]))
+    assert np.allclose(w_brisk[ins], w[ins] / 1.25)
+    assert w[ins].min() == pytest.approx(30)
+
+
 def test_invalid_requests_raise(engine):
     from isochrone.engine import Request
     with pytest.raises(ValueError):

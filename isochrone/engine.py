@@ -167,6 +167,7 @@ class Engine:
                 config.TRAIN_FREQUENCIES, self.meta["names"]["platform_code"], self.tr["hop"], self.tr["hop_wait"])
         self.hop_factor = np.array([config.RAIL_RUNTIME_FACTOR.get(self.platform_line[p], 1.0)
                                     for p in tr["hop"][:, 0]])
+        self._station_access(tr["access"])
         stations = json.loads((b / "overlays" / "mrt_stations.geojson").read_text(encoding="utf-8"))
         self.station_names = {code: f["properties"]["name"] for f in stations["features"]
                               for code in f["properties"]["codes"].split(" / ")}
@@ -176,6 +177,22 @@ class Engine:
         self.land_cells = {name: _land_cells(land, g) for name, g in self.meta["grids"].items()}
         self.land = land.buffer(LAND_MARGIN_M)
         shapely.prepare(self.land)
+
+    def _station_access(self, access: np.ndarray) -> None:
+        """Per entrance-platform pair: the station's street-to-platform seconds (at the
+        default walking pace) and the metres walked on top, from entrances beyond the
+        platform's span (see config.STATION_SPAN_M)."""
+        codes = self.meta["names"]["platform_code"]
+        self.platform_access_s = np.full(len(codes), config.STATION_ACCESS_FALLBACK_S)
+        self.station_access = []  # the file's rows, for the About panel
+        if config.STATION_ACCESS.exists():
+            self.platform_access_s, self.station_access = transit.station_access_seconds(config.STATION_ACCESS, codes)
+        e, p = access[:, 0], access[:, 1]
+        d = np.hypot(self.entrance_x[e] - self.platform_x[p], self.entrance_y[e] - self.platform_y[p])
+        rise_m = self.platform_access_s[p] / config.STATION_ACCESS_S_PER_M
+        span = config.STATION_SPAN_M + rise_m * config.ESCALATOR_RUN_PER_M
+        self.access_s = self.platform_access_s[p]
+        self.access_walk_m = np.maximum(d - span, 0) * config.STRAIGHT_LINE_DETOUR
 
     def _check_on_land(self, x: float, y: float) -> None:
         if not shapely.contains_xy(self.land, x, y):
@@ -282,9 +299,9 @@ class Engine:
         el_ent, el_node, el_m = tr["entrance_link_entrance"], tr["entrance_link_node"], tr["entrance_link_m"]
         add(o_ent + el_ent, el_node, K_ENT_LINK, el_m)
         add(el_node, o_ent + el_ent, K_ENT_LINK, el_m)
-        acc, acc_m = tr["access"], tr["access_m"]
-        add(o_ent + acc[:, 0], o_plat + acc[:, 1], K_STATION_IN, acc_m)
-        add(o_plat + acc[:, 1], o_ent + acc[:, 0], K_STATION_OUT, acc_m)
+        acc = tr["access"]  # params: the entrance-platform pair (see _station_access)
+        add(o_ent + acc[:, 0], o_plat + acc[:, 1], K_STATION_IN, np.arange(len(acc)))
+        add(o_plat + acc[:, 1], o_ent + acc[:, 0], K_STATION_OUT, np.arange(len(acc)))
         trf = tr["transfer"]
         add(o_plat + trf[:, 0], o_plat + trf[:, 1], K_TRANSFER, tr["transfer_s"])
         hop = tr["hop"]
@@ -341,10 +358,12 @@ class Engine:
         w[idx] = tr["ride_hop_s"][p[idx].astype(np.int64)] * config.BUS_BAND_FACTOR[req.band]
         w[s[K_BUS_ALIGHT]] = EPS
 
-        idx = s[K_STATION_IN]
-        w[idx] = (config.STATION_ENTRY_S + p[idx] / v) if req.rail else OFF
-        idx = s[K_STATION_OUT]
-        w[idx] = config.STATION_EXIT_S + p[idx] / v
+        pace = config.WALK_KMH_DEFAULT / req.walk_kmh  # station times are given at the default pace
+        for k in (K_STATION_IN, K_STATION_OUT):
+            a = p[s[k]].astype(np.int64)
+            w[s[k]] = self.access_s[a] * pace + self.access_walk_m[a] / v
+        if not req.rail:
+            w[s[K_STATION_IN]] = OFF
         idx = s[K_TRANSFER]
         w[idx] = p[idx] * config.LEISURELY_WALK_KMH / req.walk_kmh
         idx = s[K_RAIL_BOARD]

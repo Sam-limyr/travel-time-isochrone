@@ -38,6 +38,20 @@ def test_published_rail_waits_by_section_and_period(tmp_path):
     assert counts == {"NSL south": 1, "NSL north": 1, "EWL airport": 1}
 
 
+def test_station_access_from_depths_and_defaults(tmp_path):
+    from isochrone import config
+    table = tmp_path / "access.csv"
+    table.write_text("stations,label,depth_m,seconds,source\n"
+                     "DT21,Bencoolen,43,,x\nEW13 NS25,City Hall,22,,x\n"
+                     "NS18-NS28,underground,,75,x\nNS EW,above ground,,30,x\n", encoding="utf-8")
+    codes = ["DT21", "DT2", "NS25", "EW13", "NS24", "NS2", "EW23", "CC1"]
+    seconds, rows = transit.station_access_seconds(table, codes)
+    per_m = config.STATION_ACCESS_S_PER_M
+    assert list(seconds) == [43 * per_m, config.STATION_ACCESS_FALLBACK_S, 22 * per_m, 22 * per_m, 75, 30, 30,
+                             config.STATION_ACCESS_FALLBACK_S]  # a code takes the first row that covers it
+    assert [r["codes"] for r in rows] == [["DT21"], ["EW13", "NS25"], ["NS24"], ["EW23", "NS2"]]
+
+
 def test_gap_stats_regular_and_bunched():
     regular = np.arange(0, 7200, 300.0)  # every 5 min
     assert transit.gap_stats(regular, 7200) == (0.0, 150.0, 300.0)

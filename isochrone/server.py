@@ -57,6 +57,9 @@ def meta() -> dict:
         "places": [{"name": n, "lon": lon, "lat": lat} for n, lon, lat in config.PLACES],
         "key_destinations": {"count": len(engine.key_dest), "skipped": engine.key_skipped},
         "train_frequencies": _train_frequencies(),
+        "station_access": {"s_per_m": config.STATION_ACCESS_S_PER_M,
+                           "rows": [{"label": r["label"], "depth_m": r["depth_m"], "seconds": round(r["seconds"])}
+                                    for r in engine.station_access if r["codes"]]},
         "service_date": m["service_date"],
         "built_at": m["built_at"],
         "sources": m["sources"],
