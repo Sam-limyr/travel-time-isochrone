@@ -87,33 +87,10 @@
         <div class="seg seg-4" role="radiogroup" aria-label="Time of day" id="band-group" data-name="band"></div>
       </section>
 
-      <section class="transit-only">
-        <h2>Waiting at stops</h2>
-        <div class="seg seg-3" role="radiogroup" aria-label="Waiting time assumption" data-name="wait">
-          <label title="Every bus and train arrives just as you get there"><input type="radio" name="wait" value="best"><span>Best case</span></label>
-          <label title="You turn up at a random time: the expected wait from published headways"><input type="radio" name="wait" value="avg" checked><span>Average</span></label>
-          <label title="You just missed one: wait the longest scheduled gap"><input type="radio" name="wait" value="worst"><span>Worst case</span></label>
-        </div>
-        <p class="note" id="wait-note"></p>
-        <div class="checks">
-          <label><input type="checkbox" id="use-bus" checked> Buses</label>
-          <label><input type="checkbox" id="use-rail" checked> MRT / LRT</label>
-          <label title="Walk straight through the ground floor of HDB blocks"><input type="checkbox" id="use-voiddeck" checked> HDB void-deck shortcuts</label>
-        </div>
-      </section>
-
       <section class="car-only" hidden>
         <h2>Parking allowance</h2>
         <div class="seg seg-3" role="radiogroup" aria-label="Parking allowance" id="parking-group" data-name="parking"></div>
         <p class="note">Added at the destination for finding a space and walking from the car. Driving speeds reflect typical congestion for the chosen time of day.</p>
-      </section>
-
-      <section>
-        <h2><label for="walk">Walking speed</label> <output id="walk-out" for="walk"></output></h2>
-        <input type="range" id="walk" min="3" max="6.5" step="0.1" list="walk-ticks">
-        <datalist id="walk-ticks"></datalist>
-        <div class="ticks" id="walk-tick-labels" aria-hidden="true"></div>
-        <p class="note transit-only">Getting to MRT platforms and changing lines scale with this speed too.</p>
       </section>
 
       <section>
@@ -150,15 +127,41 @@
         </div>
       </section>
 
-      <section>
-        <h2>Overlays</h2>
-        <div class="checks">
-          <label><input type="checkbox" id="ov-mrt" checked> MRT / LRT lines</label>
-          <label><input type="checkbox" id="ov-bus"> Bus routes</label>
-          <label><input type="checkbox" id="ov-stops"> Bus stops <span class="sub">(zoom in)</span></label>
-        </div>
-      </section>
+      <!-- settings most people can leave alone; the summary says how they are set -->
+      <details class="advanced" id="advanced">
+        <summary><span>Advanced settings</span> <span class="sub" id="advanced-summary"></span></summary>
+        <section class="transit-only">
+          <h2>Waiting at stops</h2>
+          <div class="seg seg-3" role="radiogroup" aria-label="Waiting time assumption" data-name="wait">
+            <label title="Every bus and train arrives just as you get there"><input type="radio" name="wait" value="best"><span>Best case</span></label>
+            <label title="You turn up at a random time: the expected wait from published headways"><input type="radio" name="wait" value="avg" checked><span>Average</span></label>
+            <label title="You just missed one: wait the longest scheduled gap"><input type="radio" name="wait" value="worst"><span>Worst case</span></label>
+          </div>
+          <p class="note" id="wait-note"></p>
+          <div class="checks">
+            <label><input type="checkbox" id="use-bus" checked> Buses</label>
+            <label><input type="checkbox" id="use-rail" checked> MRT / LRT</label>
+            <label title="Walk straight through the ground floor of HDB blocks"><input type="checkbox" id="use-voiddeck" checked> HDB void-deck shortcuts</label>
+          </div>
+        </section>
 
+        <section>
+          <h2><label for="walk">Walking speed</label> <output id="walk-out" for="walk"></output></h2>
+          <input type="range" id="walk" min="3" max="6.5" step="0.1" list="walk-ticks">
+          <datalist id="walk-ticks"></datalist>
+          <div class="ticks" id="walk-tick-labels" aria-hidden="true"></div>
+          <p class="note transit-only">Getting to MRT platforms and changing lines scale with this speed too.</p>
+        </section>
+
+        <section>
+          <h2>Overlays</h2>
+          <div class="checks">
+            <label><input type="checkbox" id="ov-mrt" checked> MRT / LRT lines</label>
+            <label><input type="checkbox" id="ov-bus"> Bus routes</label>
+            <label><input type="checkbox" id="ov-stops"> Bus stops <span class="sub">(zoom in)</span></label>
+          </div>
+        </section>
+      </details>
 
       <section>
         <h2 id="area-title">Reachable area</h2>
@@ -197,6 +200,8 @@
           <option value="dark">Dark</option>
         </select>
       </div>
+      <p class="note remember-note">Your settings, places and view are remembered on this device.
+        <button type="button" class="link-btn inline" id="reset-settings">Reset to defaults</button></p>
     </div>
   </aside>
 

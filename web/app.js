@@ -21,6 +21,8 @@ const LINE_NAMES = {
 };
 const NO_DATA = 65535, UNREACHED = 65534;
 const MAX_PLACES = 5;
+// remembered on this device: the last settings (as a URL hash) and whether Advanced settings is open
+const SAVED_KEY = "isochrone.settings", ADVANCED_KEY = "isochrone.advanced";
 const BLANK_IMAGE = (() => {  // fully transparent heatmap placeholder
   const c = document.createElement("canvas");
   c.width = c.height = 1;
@@ -106,10 +108,16 @@ function writeHash() {
     p.set("v", `${c.lat.toFixed(4)},${c.lng.toFixed(4)},${map.getZoom().toFixed(2)}`);
   }
   history.replaceState(null, "", "#" + p.toString());
+  // remembered for next time, without a route or trips (those are for the moment)
+  p.delete("d"); p.delete("t");
+  try { localStorage.setItem(SAVED_KEY, p.toString()); } catch { /* storage unavailable */ }
 }
 
 function readHash() {
-  const p = new URLSearchParams(location.hash.slice(1));
+  // a link or a reload carries every setting; opening the app plainly restores the last ones
+  let text = location.hash.slice(1);
+  if (!text) try { text = localStorage.getItem(SAVED_KEY) || ""; } catch { /* storage unavailable */ }
+  const p = new URLSearchParams(text);
   const pt = (v) => { const [lat, lon] = (v || "").split(",").map(Number); return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null; };
   state.origin = pt(p.get("o"));
   const view = (p.get("v") || "").split(",").map(Number);
@@ -232,8 +240,17 @@ function buildControls() {
   $("#palette-rev").addEventListener("change", (e) => { state.reverse = e.target.checked; paintPaletteSwatches(); redraw(); });
   $("#opacity").addEventListener("input", (e) => { state.opacity = Number(e.target.value); applyHeatOpacity(); });
   for (const [id, key] of [["#use-bus", "bus"], ["#use-rail", "rail"], ["#use-voiddeck", "voiddeck"]]) {
-    $(id).addEventListener("change", (e) => { state[key] = e.target.checked; recompute(); });
+    $(id).addEventListener("change", (e) => { state[key] = e.target.checked; updateAdvancedSummary(); recompute(); });
   }
+  const advanced = $("#advanced");
+  try { advanced.open = localStorage.getItem(ADVANCED_KEY) === "open"; } catch { /* storage unavailable */ }
+  advanced.addEventListener("toggle", () => {
+    try { localStorage.setItem(ADVANCED_KEY, advanced.open ? "open" : "closed"); } catch { /* storage unavailable */ }
+  });
+  $("#reset-settings").addEventListener("click", () => {
+    try { for (const k of [SAVED_KEY, ADVANCED_KEY, "theme", "basemap"]) localStorage.removeItem(k); } catch { /* storage unavailable */ }
+    location.replace(location.pathname);  // no hash and nothing saved: the defaults
+  });
   for (const [id, key] of [["#ov-mrt", "ovMrt"], ["#ov-bus", "ovBus"], ["#ov-stops", "ovStops"]]) {
     $(id).addEventListener("change", (e) => { state[key] = e.target.checked; writeHash(); applyOverlays(); });
   }
@@ -299,9 +316,19 @@ function syncControlVisibility() {
     worst: "You just missed each bus and train: the longest scheduled gap.",
   };
   $("#wait-note").textContent = notes[state.wait];
+  updateAdvancedSummary();
 }
 
-const updateWalkOut = () => { $("#walk-out").textContent = `${state.walk.toFixed(1)} km/h`; };
+const updateWalkOut = () => { $("#walk-out").textContent = `${state.walk.toFixed(1)} km/h`; updateAdvancedSummary(); };
+
+/** What the folded Advanced settings are set to, next to its title. */
+function updateAdvancedSummary() {
+  const waits = { best: "no waits", avg: "average waits", worst: "worst-case waits" };
+  const parts = state.mode === "transit"
+    ? [waits[state.wait], ...[!state.bus && "no buses", !state.rail && "no MRT", !state.voiddeck && "no void decks"].filter(Boolean)]
+    : [];
+  $("#advanced-summary").textContent = [...parts, `${state.walk.toFixed(1)} km/h`].join(" · ");
+}
 const updateMaxOut = () => { $("#max-out").textContent = `${state.maxMin} min`; };
 
 function updateBandNote() {
