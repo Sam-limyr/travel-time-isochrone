@@ -213,6 +213,8 @@ h2 .link-btn { margin-left: auto; text-transform: none; letter-spacing: 0; font-
 .icon-btn { font: inherit; font-size: 16px; line-height: 1; width: 30px; height: 30px; border-radius: 6px;
             background: transparent; color: var(--ink-2); border: 1px solid var(--border); cursor: pointer; flex: none; }
 .icon-btn:hover { background: var(--grid); }
+a.icon-btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; font-weight: 600; font-size: 15px; }
+.head-actions { display: flex; gap: 6px; flex: none; }
 
 /* route */
 #route .total { font-size: 22px; font-weight: 600; margin: 0 0 6px; }

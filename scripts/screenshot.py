@@ -29,6 +29,14 @@ BROWSERS = [
 BROWSER_COMMANDS = ["msedge", "google-chrome", "chromium", "chromium-browser", "chrome"]
 
 
+def find_browser() -> str:
+    browser = next((b for b in BROWSERS if os.path.exists(b)), None) or next(
+        (shutil.which(c) for c in BROWSER_COMMANDS if shutil.which(c)), None)
+    if not browser:
+        raise SystemExit("No Chromium-based browser found (Edge, Chrome or Chromium).")
+    return browser
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("url")
@@ -40,10 +48,7 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=9333)
     args = ap.parse_args()
 
-    browser = next((b for b in BROWSERS if os.path.exists(b)), None) or next(
-        (shutil.which(c) for c in BROWSER_COMMANDS if shutil.which(c)), None)
-    if not browser:
-        raise SystemExit("No Chromium-based browser found (Edge, Chrome or Chromium).")
+    browser = find_browser()
     profile = tempfile.mkdtemp(prefix="isochrone-shot-")
     proc = subprocess.Popen([
         browser, "--headless=new", f"--remote-debugging-port={args.port}", f"--user-data-dir={profile}",

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How to use SG Isochrones</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e;
+      --border: rgba(11, 11, 11, 0.10); --accent: #2a78d6; --accent-ink: #ffffff;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+        --border: rgba(255, 255, 255, 0.10); --accent: #3987e5;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+      --border: rgba(255, 255, 255, 0.10); --accent: #3987e5;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--page); color: var(--ink); }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 16px 40px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+    h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+    .open { display: inline-block; padding: 8px 16px; border-radius: 999px; background: var(--accent); color: var(--accent-ink);
+            font-weight: 600; text-decoration: none; }
+    .open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    li { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    li a.shot { display: block; border-bottom: 1px solid var(--border); }
+    li a.shot:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    li img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: center; }
+    li img.panel { object-position: left top; }  /* the side panel is what these show */
+    li img.fit { object-fit: contain; background: var(--page); }
+    .nowrap { white-space: nowrap; }
+    .step { display: flex; gap: 12px; align-items: baseline; padding: 12px 14px 14px; }
+    .n { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--page);
+         display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+    h2 { font-size: 16px; margin: 0 0 2px; }
+    p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+    kbd { font: inherit; font-size: 12.5px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--page); }
+  </style>
+  <script>
+    // match the app's theme choice, if one was made there
+    try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch { /* storage unavailable */ }
+  </script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>How to use SG Isochrones</h1>
+      <a class="open" href="./">Open the map</a>
+    </header>
+    <ol>
+      <li>
+        <a class="shot" href="tutorial/1-click.jpg"><img src="tutorial/1-click.jpg" alt="The map coloured by travel time from a point in Bishan, with the colour scale top right."></a>
+        <div class="step"><span class="n">1</span><div><h2>Click the map</h2><p>Minutes from there to everywhere.</p></div></div>
+      </li>
+      <li>
+        <a class="shot" href="tutorial/2-route.jpg"><img class="panel" src="tutorial/2-route.jpg" alt="A route from Bishan to Raffles Place on the North–South Line, listed in the panel with a red Close button."></a>
+        <div class="step"><span class="n">2</span><div><h2>Right-click</h2><p>The route there. <kbd>Esc</kbd> closes it. On a Mac: <span class="nowrap"><kbd>Ctrl</kbd>-click</span>.</p></div></div>
+      </li>
+      <li>
+        <a class="shot" href="tutorial/3-places.jpg"><img class="panel" src="tutorial/3-places.jpg" alt="Three numbered places on the map, listed with weights, and the map coloured by average trip time to them."></a>
+        <div class="step"><span class="n">3</span><div><h2>To several places</h2><p>Click up to five. See the average trip from anywhere.</p></div></div>
+      </li>
+      <li>
+        <a class="shot" href="tutorial/4-profile.jpg"><img class="panel" src="tutorial/4-profile.jpg" alt="The profile view: an office job in the CBD, its places as dots, and the trip times from a pin in Bishan."></a>
+        <div class="step"><span class="n">4</span><div><h2>To a profile</h2><p>Pick a lifestyle. Click a spot for its trips.</p></div></div>
+      </li>
+      <li>
+        <a class="shot" href="tutorial/5-hover.jpg"><img class="fit" src="tutorial/5-hover.jpg" alt="A tooltip over the map reading 32 min by public transport, AM peak."></a>
+        <div class="step"><span class="n">5</span><div><h2>Hover</h2><p>Exact minutes.</p></div></div>
+      </li>
+      <li>
+        <a class="shot" href="tutorial/6-settings.jpg"><img class="fit" src="tutorial/6-settings.jpg" alt="The settings: time of day, resolution, colours and bands, and Advanced settings."></a>
+        <div class="step"><span class="n">6</span><div><h2>Settings</h2><p>Time of day, detail, colours. More under <i>Advanced</i>. Remembered.</p></div></div>
+      </li>
+    </ol>
+  </main>
+</body>
+</html>
