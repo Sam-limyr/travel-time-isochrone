@@ -1,10 +1,16 @@
 # SG Isochrones
 
 Click anywhere in Singapore and see how long it takes to get everywhere else, as a
-travel-time heatmap. Public transport covers walking, buses, MRT and LRT; a separate
-car mode uses typical traffic for the time of day. Everything runs locally.
+travel-time heatmap. Or map the average trip to several places you go to, or to the key
+destinations of a lifestyle, to see where to live. Public transport covers walking, buses,
+MRT and LRT; a separate car mode uses typical traffic for the time of day. Everything runs
+locally.
 
 ![Travel times from Toa Payoh in the weekday AM peak, with the fastest route to Changi Airport](docs/screenshot.png)
+
+New to it? The **?** at the top of the panel opens a six-step
+[tutorial](web/tutorial.html). Every assumption the model makes, with its value and
+source, is listed in [docs/model.md](docs/model.md).
 
 ## Quick start
 
@@ -37,14 +43,16 @@ The first run takes a few minutes:
 
 1. Poetry creates `.venv` in the project with the newest Python 3.12–3.14 it can find, and
    installs the locked dependencies from `poetry.lock`.
-2. The networks are built (about a minute, including a ~40 MB OpenStreetMap download).
+2. The networks are built (about two minutes, including a ~40 MB OpenStreetMap download).
 3. The app opens at http://127.0.0.1:8000.
 
-Later runs start in a few seconds. The same steps with Poetry directly, on any OS:
+Later runs start in a few seconds. After an update that changes how the networks are
+built, the launcher rebuilds them once by itself. The same steps with Poetry directly, on
+any OS:
 
 ```bash
 poetry install                           # .venv + locked dependencies (incl. dev tools)
-poetry run isochrone build               # networks -> data/build (gitignored)
+poetry run isochrone build --if-needed   # networks -> data/build (gitignored), if missing or outdated
 poetry run isochrone serve --open        # http://127.0.0.1:8000
 ```
 
@@ -66,59 +74,85 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
 - **Port already in use**: start on another port (`./run.sh --port 8080`, or
   `poetry run isochrone serve --port 8080`). On Windows, a server whose terminal was
   ended from Task Manager keeps running; end its `python.exe` there too.
+- **"The network build is from an older version of this app"**: run
+  `poetry run isochrone build` (the launcher does this for you).
+- **The app opens with old settings**: settings are remembered in the browser. *Reset to
+  defaults* at the bottom of the panel clears them.
 - **Start again from scratch**: delete `.venv` and `data/build`, then run the launcher again.
 
 ## Using the app
 
-- **Click** the map to set the start point (or drag the black pin). The heatmap shows the
-  door-to-door travel time from there to every 50–250 m cell of land.
-- **To several places** (under *Map shows*): click up to five places, such as workplaces,
-  schools or family, or add them from the landmarks table. The heatmap then shows, for
-  every spot, the average door-to-door time from there to the places: where to live or
-  meet so the trips add up to the least. Hover for each place's own time; drag a numbered
-  pin to move it. **Right-click** a spot (or use *Trips* in the landmarks table) to see
-  its trip to each place, with legs, and their weighted average. They appear at the top
-  of the panel; *✕ Close* or Esc removes them.
-- **Weights and names**: give each place a name and a weight for how much it counts.
-  Trips per week work well: for a couple, *Work (you)* 5, *Work (partner)* 5 and
-  *Weekend park* 2, which is what *try an example* loads. The map shows the weighted
-  average, each place's share of it is listed, and a weight of 0 leaves a place out.
-  Weights apply instantly, with no new search.
-- **Right-click** a point (**Ctrl-click** or two-finger click on a Mac), or use *Route* in the
-  places table, to see the fastest itinerary there: walks, bus services, train lines,
-  interchanges and waits. *✕ Close* or Esc removes it.
-- **Travel by**: public transport (walk + bus + MRT/LRT) or car.
+**Map shows** has three views:
+
+- **From one point**: click the map to set the start point (or drag the black pin). The
+  heatmap shows the door-to-door travel time from there to every 50–250 m cell of land.
+  **Right-click** a point (**Ctrl-click** or two-finger click on a Mac), or use *Route* in
+  the landmarks table, to see the fastest itinerary there: walks, bus services, train
+  lines, interchanges and waits. It appears at the top of the panel; the red *✕ Close*
+  or Esc removes it. The legend card also shows the start point's key-destinations score
+  (below); clicking it opens the profile view.
+- **To several places**: click up to five places, such as workplaces, schools or family,
+  or add them from the landmarks table. The heatmap then shows, for every spot, the
+  average door-to-door time from there to the places: where to live or meet so the trips
+  add up to the least. Hover for each place's own time; drag a numbered pin to move it.
+  Give each place a name and a **weight** for how much it counts: trips per week work
+  well, e.g. *Work (you)* 5, *Work (partner)* 5 and *Weekend park* 2, which is what *try
+  an example* loads. Weights apply instantly, and a weight of 0 leaves a place out.
+  **Right-click** a spot (or use *Trips* in the landmarks table) to see its trip to each
+  place, with legs, and their weighted average.
+- **To a profile**: pick a profile of key destinations, such as an office job in the CBD
+  or frequent trips to JB (below). The heatmap shows, for every spot, the weighted
+  average trip time to the profile's places: its key-destinations score if you lived
+  there. The places appear as dots sized by their weight. Click a spot (or drag the pin)
+  for its trip time to each group and place, with a *Route* to each; right-click for a
+  route anywhere. A profile's first map at given settings takes a few seconds (one search
+  per place); after that, and for places other profiles share, it's quicker.
+
+Settings:
+
+- **Travel by**: public transport (walk + bus + MRT/LRT) or car. **Parking allowance**
+  (car only): 0, 2 or 5 minutes added at the destination.
 - **Time of day**: weekday AM peak (06:30–08:30), midday, PM peak (17:00–19:00) or
   evening (19:00–23:00). These match the headway bands LTA publishes for buses. Waits
   follow the band: trains run every 2–5 minutes at peak and 4–7 off-peak on most lines,
   and most buses run more often at peak too.
-- **Waiting at stops**: *best case* (every bus and train turns up as you arrive),
-  *average* (you arrive at a random time) or *worst case* (you just missed each one).
-- **Walking speed** slider (3–6.5 km/h). Getting to MRT platforms and changing lines
-  scale with it too (below).
-- **Buses / MRT / HDB void-deck shortcuts** can each be switched off to compare.
-- **Parking allowance** (car mode): 0, 2 or 5 minutes added at the destination.
 - **Resolution**: low (250 m), medium (100 m) or high (50 m) grid cells.
 - **Display**: a smooth ramp or bands. *Colour up to* (30–150 min) sets where colouring
   stops, in either style. *Band width* (5–30 min) only sets the step between bands, so
   15-minute bands up to 90 minutes gives six bands. If the cut-off isn't a multiple of
-  the width, the last band is shorter.
+  the width, the last band is shorter. **Opacity** sets how strongly the heatmap covers
+  the basemap.
 - **Colours**: Blues (default), Viridis, Plasma, Yellow–orange–red, Yellow–green–blue,
   Blue–white–orange or Green–yellow–red (hard to read with red–green colour blindness),
   each reversible. One-way schemes start from their dark end in the light theme and their
   light end in the dark theme, so colour fades into the basemap with distance.
-- **Opacity** and **overlays** for MRT/LRT lines, bus routes and bus stops. Hover for exact
-  times, station names and the bus services on a road.
-- **Key destinations**: the weighted average travel time from the start point to a
-  profile's important places, shown in the legend card, with a breakdown in the panel by
-  group and by place. Pick a **profile** in the panel; switching is instant (below).
+- **Advanced settings** (folded away; its title line says how they're set):
+  - **Waiting at stops**: *best case* (every bus and train turns up as you arrive),
+    *average* (you arrive at a random time) or *worst case* (you just missed each one).
+    **Buses / MRT / HDB void-deck shortcuts** can each be switched off to compare.
+  - **Walking speed** (3–6.5 km/h). Getting to MRT platforms and changing lines scale
+    with it too (below).
+  - **Overlays** for MRT/LRT lines, bus routes and bus stops.
+- **Remembered**: settings, places, the chosen profile and the map view are saved in the
+  browser, and opening the app again restores them. A link or a reload shows exactly
+  what its URL says, so links can be shared. *Reset to defaults*, at the bottom of the
+  panel, clears everything.
+
+Also on screen:
+
+- **Hover** for exact times, station names and the bus services on a road.
+- **Key destinations**: the weighted average travel time from a spot to a profile's
+  important places. In *From one point* the legend card shows it for the start point; in
+  *To a profile* the panel breaks it down by group and by place. Switching profile is
+  instant.
 - **Share of Singapore's land** (in the legend card): how much of the land falls in each
   band, as a bar and a table. The land is URA's outline, 785 km² including reservoirs and
-  offshore islands. The last two rows are land beyond the cut-off, and land more than
-  400 m from any footpath (forest, airfields, military and industrial islands), which
-  the map leaves blank. Rows follow the bands, or the legend's steps in smooth mode.
+  offshore islands. The last two rows are land beyond the cut-off, and land that no
+  footpath within 400 m reaches without crossing a barrier (forest, airfields, military
+  and industrial islands), which the map leaves blank. Rows follow the bands, or the
+  legend's steps in smooth mode.
 - The **Reachable area** and **Travel time to places** tables give the same information
-  as text. Settings, start point and map view are kept in the URL, so links can be shared.
+  as text.
 
 ### Key destination profiles
 
@@ -144,7 +178,8 @@ weights or add a profile, then restart the server.
 ## How travel times are calculated
 
 Each click runs one shortest-path search (Dijkstra) over a single graph, and the result
-is sampled onto the grid.
+is sampled onto the grid. [docs/model.md](docs/model.md) lists every assumption below, with
+its value, source and where to change it.
 
 **Walking** uses the real footpath and road network from OpenStreetMap (footways,
 covered linkways, overhead bridges, steps and so on; expressways and private roads are
@@ -152,6 +187,26 @@ excluded). **HDB void decks**: HDB's building footprints are used to add a walki
 straight through each block wherever footpaths meet it on opposite sides (76,600 links,
 from 13,447 building footprints). In estates this adds 3–12% to the area walkable within 15
 minutes and saves up to about 6 minutes for some destinations.
+
+**Barrier-aware walking**: places join the footpath network by short straight walks (×1.2
+for the usual detours): a map cell or clicked point to its nearest footpaths, a bus stop
+or station exit to the footpath beside it, and, near the start, straight across open
+ground to spots under 500 m away. These walks use the *barrier-aware distance* of the
+sibling hdb-resale-analysis project. Open ground is walkable in any direction, but not
+across an expressway, a major road, a river or canal, other water, an at-grade railway or
+fenced grounds (schools, prisons, military land, airfields, golf courses), except where
+OpenStreetMap maps a crossing: a pedestrian crossing, junction, overhead bridge,
+underpass or road bridge. That project draws them on a 3 m grid, copied into
+[`data/raw/barriers`](data/raw/barriers). A walk may start or end on a barrier (a point on
+a road, a bridge or in school grounds) but not pass over one. A point on a barrier first
+steps off it to the nearest open ground, so a kerbside bus stop joins the footpath on
+its own side of the road. Map cells whose only nearby footpaths are across a barrier are
+left blank.
+
+The same project found that OpenStreetMap misses many short paths: Block 95 Havelock Road
+is 71 m from Havelock station's Exit 3, but 483 m over the mapped paths. So every map cell
+and clicked point also joins its **nearest station exit and bus stop directly**, within
+400 m, by a barrier-aware straight walk, as that project measures block to exit.
 
 **Buses** (777 service directions, 5,194 stops) come from LTA DataMall. Boarding costs a
 wait taken from LTA's published dispatch-frequency range for the time band, e.g. "08-12"
@@ -250,11 +305,20 @@ the same weights. That gives every spot's time to the place directly, and it mat
 router's forward itinerary to within grid rounding. The browser averages the places' grids
 cell by cell, so a new place costs one search (about 0.2 s) and weights apply instantly.
 
-**The grid**: each cell takes the fastest of its four nearest network nodes plus the
-remaining walk (straight line × 1.2). Cells more than 400 m from any footpath (forest
-interiors, runways, military areas) are left blank. Resolution barely affects speed: a
-new search takes about 0.1 s, and sampling it takes 5–40 ms. Changing resolution, the
-parking allowance or the colour scale reuses the last search.
+**Profiles**: a profile's map is the several-places map for all of its places at once:
+one backwards search per place (35 for *General*), and each spot's weighted average of
+its times to them. A place that can't be reached within 180 minutes counts as 180, as in
+the key-destinations score, so a spot's value is the score you'd get by starting there;
+the two agree to within about half a minute. The server does this (about 4 s for 35
+places at the high resolution) and keeps each place's times for the current settings, so
+another profile sharing places, or a return to one already shown, is quick.
+
+**The grid**: each cell takes the fastest of its links (its four nearest footpaths, and
+its nearest station exit and bus stop) plus the walk to it. Cells that reach none within
+400 m without crossing a barrier (forest interiors, runways, military areas) are left
+blank. Resolution barely affects speed: a new search takes about 0.1 s, and sampling it
+takes 5–40 ms. Changing resolution, the parking allowance or the colour scale reuses the
+last search.
 
 ### Validation
 
@@ -276,12 +340,25 @@ Raffles Place, with average waits:
 |---|---|---|
 | Jurong East | 28 | 29 |
 | Tampines | 32 | 33 |
-| Changi Airport | 42 | 43 |
+| Changi Airport | 40 | 41 |
 | Woodlands | 49 | 51 |
 | Tuas Link | 52 | 53 |
 
-These are in line with typical journey-planner times. The development commands below
-reproduce these checks.
+These are in line with typical journey-planner times.
+
+`scripts/validate_walking.py` compares the model's walk from each HDB block to its nearest
+MRT exit with the hdb-resale-analysis project's barrier-aware distance, for the 9,200
+blocks within 1.5 km of an exit:
+
+| Model's walk ÷ barrier-aware distance | Before barrier-aware walking | Now |
+|---|---|---|
+| Median | 1.29 | 1.21 (the ×1.2 straight-walk allowance) |
+| 90th percentile | 1.58 | 1.44 |
+| Blocks over 1.5× | 14.8% | 6.5% |
+| Blocks over 2× | 2.5% | 0.6% |
+| Block 95 Havelock Road (71 m from Exit 3) | 303 m | 85 m |
+
+The development commands below reproduce these checks.
 
 ## Data sources and freshness
 
@@ -291,6 +368,7 @@ reproduce these checks.
 | MRT/LRT timetable, platforms, station exits | LTA DataMall GTFS Schedule (Train) | published 26 Sep 2026; service day Mon 28 Sep 2026 |
 | MRT/LRT peak and off-peak frequencies | Operators' figures as listed on SGWiki; LTA's network-wide figures | Sep 2026 |
 | MRT station depths | Stations' Wikipedia articles (LTA and press figures) | Sep 2026 |
+| Barriers to walking | hdb-resale-analysis project's barrier grid, from OpenStreetMap (copied) | OSM 15 Jul–29 Sep 2026 |
 | Footpaths and roads | OpenStreetMap (openstreetmap.fr extract) | 25 Sep 2026 |
 | MRT/LRT line shapes (overlay) | OpenStreetMap route relations | 25 Sep 2026 |
 | HDB building footprints | HDB via data.gov.sg | fetched 26 Sep 2026 |
@@ -302,7 +380,7 @@ The train timetable reflects the network open today, including Circle Line Stage
 (Keppel, Cantonment, Prince Edward Road). Stations not yet in LTA's timetable, such as
 the TEL Stage 5 and DTL extension stations, aren't included.
 
-**Small datasets are committed** under `data/raw` (about 10 MB). The OSM extract, raw HDB
+**Small datasets are committed** under `data/raw` (about 13 MB). The OSM extract, raw HDB
 GeoJSON and built networks live in the gitignored `data/cache` and `data/build`.
 
 ### Refreshing the data
@@ -319,10 +397,13 @@ Then:
 ```bash
 poetry run isochrone fetch                          # all sources
 poetry run isochrone fetch --only osm --force       # just a newer OSM extract
-poetry run isochrone build                          # rebuild networks (~1 min)
+poetry run isochrone build                          # rebuild networks (~2 min)
 ```
 
-Sources: `lta`, `speeds`, `osm`, `hdb`, `boundary`, `busrouter`. Only `lta` needs the key.
+Sources: `lta`, `speeds`, `osm`, `hdb`, `boundary`, `busrouter`, `barriers`. Only `lta`
+needs the key. `barriers` downloads nothing: it copies the barrier grid from
+`../public-dataset-research/hdb-resale-analysis` (its pipeline step 06b) when that
+project sits next to this one.
 Each fetch records its time and licence in `data/raw/sources.json`. The build uses today's
 date, or the next weekday, as the timetable service day.
 
@@ -331,33 +412,40 @@ date, or the next weekday, as the timetable service day.
 ```
 isochrone/
   config.py      model constants: bands, speeds, waits, grid sizes, data sources
-  fetch.py       downloaders (LTA DataMall, OSM, data.gov.sg, busrouter)
+  fetch.py       downloaders (LTA DataMall, OSM, data.gov.sg, busrouter), barrier grid copy
   osm.py         OSM -> walk and drive graphs
-  transit.py     bus and train service models
+  transit.py     bus and train service models, station access and wait tables
+  barriers.py    barrier-aware straight walks (the 3 m barrier grid)
+  geo.py         projections (local metres, SVY21), land outline
   build.py       assembles networks, void-deck links, grids and overlays -> data/build
-  engine.py      per-request edge weights, Dijkstra, grid sampling, itineraries
+  engine.py      per-request edge weights, Dijkstra, grid sampling, profile maps, itineraries
   server.py      FastAPI app (API + static front end)
 web/             index.html, app.js, palettes.js (colour schemes), style.css,
-                 vendored MapLibre GL JS 5.24
-data/raw/        cached public datasets (committed)
+                 tutorial.html (+ tutorial/ screenshots), vendored MapLibre GL JS 5.24
+data/raw/        cached public datasets, incl. the barrier grid (committed)
 data/manual/     hand-curated inputs (MRT interchange timings, train frequencies, station
                  depths, key destination profiles)
-scripts/         probe.py, validate_mrt.py, screenshot.py (dev tools)
+docs/            model.md (every assumption), screenshot.png
+scripts/         probe.py, validate_mrt.py, validate_walking.py, screenshot.py,
+                 tutorial_shots.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
 run.sh           launcher for macOS, Linux and Windows (Git Bash)
 ```
 
-Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) are all in
-`isochrone/config.py`.
+Tunable assumptions (speeds, dwell and access times, band factors, grid sizes) are in
+`isochrone/config.py` and the tables in `data/manual`; [docs/model.md](docs/model.md) says
+which is where.
 
 ## Development
 
 ```bash
-poetry run pytest                                     # 48 unit + integration tests
+poetry run pytest                                     # 53 unit + integration tests
 poetry run python scripts/probe.py "Jurong East MRT"  # times to well-known places from an origin
 poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/data/travel_times_final_20250706.csv
+poetry run python scripts/validate_walking.py blocks.csv   # HDB blocks' walks to MRT exits (see the script)
 poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
+poetry run python scripts/tutorial_shots.py          # retakes web/tutorial/*.jpg from a running app
 ```
 
 The integration tests and scripts need a built network (`poetry run isochrone build`).
@@ -369,7 +457,9 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
 |---|---|
 | `GET /api/isochrone` | `lat`, `lon`, `mode` (`transit`/`car`), `band` (`am_peak`/`midday`/`pm_peak`/`evening`), `wait` (`best`/`avg`/`worst`), `walk_kmh`, `res` (`low`/`med`/`high`), `bus`, `rail`, `voiddeck`, `parking`, `direction` (`from` the point, the default, or `to` it from everywhere). Returns the grid as base64 little-endian uint16 in tenths of a minute (65535 = no data, 65534 = not reached within 180 min), its `land_cells` (cells of land in the grid's footprint, mapped or not), reachable areas, and `key_destinations` (for each profile: each place's time, group averages and the weighted average). |
 | `GET /api/route` | Same as above plus `to_lat`, `to_lon`. Returns itinerary legs with times and geometry. |
-| `GET /api/meta` | Bands, options, data sources and build statistics. |
+| `GET /api/profile` | `profile` (a key from `/api/meta`) and the travel settings above, without a point. Returns the grid of weighted average times from everywhere to the profile's places, in the same encoding. |
+| `GET /api/key_destinations` | `lat`, `lon` and the travel settings. Returns every profile's key-destinations score for that start point, without a grid. |
+| `GET /api/meta` | Bands, options, key-destination profiles, train frequencies, station access times, data sources and build statistics. |
 | `GET /api/overlays/{mrt_lines,mrt_stations,bus_routes,bus_stops}` | GeoJSON. |
 
 ## Limitations
@@ -393,7 +483,12 @@ The integration tests and scripts need a built network (`poetry run isochrone bu
   run in each band, and the Bukit Panjang LRT's waits). Its whole-minute running times are
   corrected with per-line factors (above), which will need revisiting when LTA publishes
   a finer-grained feed.
-- **Excluded services**: bus services with no published headways (20 directions, mostly
+- **Barriers, not buildings**: straight walks off the footpaths avoid expressways, major
+  roads, water, railways and fenced grounds, but may cut through private compounds that
+  aren't in that set (condominium grounds, factories). The ×1.2 allowance covers only
+  ordinary detours. A few points hemmed in between carriageways fall back to plain
+  straight links.
+- **Excluded services**: bus services with no published headways (22 directions, mostly
   short workings such as 7A and a few City Direct runs), the Malaysian end of cross-border
   buses, ferries, Sentosa Express and the Changi Airport Skytrain.
 - **Drawn geometry**: train legs in the route view are straight lines between stations,
@@ -412,4 +507,6 @@ Authority, or © Esri. Bus route lines are from
 licensed (`web/vendor/maplibre-gl/LICENSE.txt`). The Viridis and Plasma colour schemes
 come from matplotlib (CC0); the ColorBrewer schemes are © Cynthia Brewer, Mark Harrower
 and The Pennsylvania State University (Apache-2.0). The MRT interchange timings are
-community-measured (Reddit).
+community-measured (Reddit). The barrier grid in `data/raw/barriers` is derived from
+OpenStreetMap by the hdb-resale-analysis project (ODbL 1.0). The tutorial's screenshots
+show OneMap tiles (© Singapore Land Authority).

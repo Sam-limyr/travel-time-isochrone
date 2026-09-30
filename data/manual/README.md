@@ -69,7 +69,8 @@ after editing.
 
 Preset profiles for the **Key destinations** score: for the chosen profile, the app
 reports the weighted average travel time from the start point to its places. Every
-profile is computed with each search, so switching profile is instant.
+profile is computed with each search, so switching profile is instant. The *To a
+profile* view maps that score for every spot, searching once from each place.
 
 ```toml
 [general]                                # the key, kept in the app's URL
