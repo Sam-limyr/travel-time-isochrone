@@ -6,7 +6,7 @@ destinations of a lifestyle, to see where to live. Public transport covers walki
 MRT and LRT; a separate car mode uses typical traffic for the time of day. Everything runs
 locally.
 
-![Travel times from Toa Payoh in the weekday AM peak, with the fastest route to Changi Airport](docs/screenshot.png)
+![Travel times by public transport from Raffles Place in the weekday AM peak, in 10-minute bands up to 50 minutes](docs/screenshots/1-from-one-point.jpg)
 
 New to it? The **?** at the top of the panel opens a six-step
 [tutorial](web/tutorial.html). Every assumption the model makes, with its value and
@@ -100,6 +100,8 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   an example* loads. Weights apply instantly, and a weight of 0 leaves a place out.
   **Right-click** a spot (or use *Trips* in the landmarks table) to see its trip to each
   place, with legs, and their weighted average.
+
+  ![The average trip time from everywhere to places in Jurong East, Punggol and Tampines, weighted 2, 1 and 2](docs/screenshots/2-several-places.jpg)
 - **To a profile**: pick a profile of key destinations, such as an office job in the CBD
   or frequent trips to JB (below). The heatmap shows, for every spot, the weighted
   average trip time to the profile's places: its key-destinations score if you lived
@@ -108,10 +110,14 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   route anywhere. A profile's first map at given settings takes a few seconds (one search
   per place); after that, and for places other profiles share, it's quicker.
 
+  ![The profile Office job outside the CBD: its places as dots, the trips from a pin at Springleaf by group, and the pointer's weighted average](docs/screenshots/3-profile.jpg)
+
 Settings:
 
 - **Travel by**: public transport (walk + bus + MRT/LRT) or car. **Parking allowance**
   (car only): 0, 2 or 5 minutes added at the destination.
+
+  ![Travel times by car from Jurong East in the weekday PM peak, with 2 minutes to park, in 5-minute bands up to 40 minutes](docs/screenshots/4-car.jpg)
 - **Time of day**: weekday AM peak (06:30–08:30), midday, PM peak (17:00–19:00) or
   evening (19:00–23:00). These match the headway bands LTA publishes for buses. Waits
   follow the band: trains run every 2–5 minutes at peak and 4–7 off-peak on most lines,
@@ -425,9 +431,9 @@ web/             index.html, app.js, palettes.js (colour schemes), style.css,
 data/raw/        cached public datasets, incl. the barrier grid (committed)
 data/manual/     hand-curated inputs (MRT interchange timings, train frequencies, station
                  depths, key destination profiles)
-docs/            model.md (every assumption), screenshot.png
+docs/            model.md (every assumption), screenshots/ (this page's images)
 scripts/         probe.py, validate_mrt.py, validate_walking.py, screenshot.py,
-                 tutorial_shots.py (dev tools)
+                 tutorial_shots.py, readme_shots.py (dev tools)
 tests/           pytest suite
 pyproject.toml   dependencies (Poetry); poetry.lock pins them for every platform
 run.sh           launcher for macOS, Linux and Windows (Git Bash)
@@ -446,6 +452,7 @@ poetry run python scripts/validate_mrt.py ../the-fastest-journey/mrt_distance/da
 poetry run python scripts/validate_walking.py blocks.csv   # HDB blocks' walks to MRT exits (see the script)
 poetry run python scripts/screenshot.py "http://127.0.0.1:8000/#o=1.334,103.849" shot.png   # needs Edge/Chrome
 poetry run python scripts/tutorial_shots.py          # retakes web/tutorial/*.jpg from a running app
+poetry run python scripts/readme_shots.py            # retakes docs/screenshots/*.jpg (this page's images)
 ```
 
 The integration tests and scripts need a built network (`poetry run isochrone build`).
@@ -508,5 +515,5 @@ licensed (`web/vendor/maplibre-gl/LICENSE.txt`). The Viridis and Plasma colour s
 come from matplotlib (CC0); the ColorBrewer schemes are © Cynthia Brewer, Mark Harrower
 and The Pennsylvania State University (Apache-2.0). The MRT interchange timings are
 community-measured (Reddit). The barrier grid in `data/raw/barriers` is derived from
-OpenStreetMap by the hdb-resale-analysis project (ODbL 1.0). The tutorial's screenshots
-show OneMap tiles (© Singapore Land Authority).
+OpenStreetMap by the hdb-resale-analysis project (ODbL 1.0). The screenshots here and in
+the tutorial show OneMap tiles (© Singapore Land Authority).

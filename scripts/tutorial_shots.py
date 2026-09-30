@@ -24,12 +24,17 @@ W, H = 1280, 800
 
 
 class Page:
-    def __init__(self, port: int = 9351):
+    """A headless browser tab on the app; scripts/readme_shots.py uses it too, with its own settings."""
+
+    def __init__(self, port: int = 9351, app: str = APP, look: str = LOOK, out: Path = OUT,
+                 size: tuple[int, int] = (W, H), scheme: str = "light"):
+        self.app, self.look, self.out = app, look, out
         self.profile = tempfile.mkdtemp(prefix="tutorial-shots-")
         self.proc = subprocess.Popen([find_browser(), "--headless=new", f"--remote-debugging-port={port}",
-                                      f"--user-data-dir={self.profile}", "--blink-settings=preferredColorScheme=1",
+                                      f"--user-data-dir={self.profile}",
+                                      f"--blink-settings=preferredColorScheme={0 if scheme == 'dark' else 1}",
                                       "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--hide-scrollbars",
-                                      f"--window-size={W},{H}", "about:blank"],
+                                      f"--window-size={size[0]},{size[1]}", "about:blank"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(50):
             try:
@@ -40,7 +45,7 @@ class Page:
         self.ws = websocket.create_connection(next(t for t in tabs if t["type"] == "page")["webSocketDebuggerUrl"],
                                               timeout=120, suppress_origin=True)
         self.ids = iter(range(1, 10**6))
-        self.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "light"}])
+        self.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": scheme}])
 
     def call(self, method, **params):
         i = next(self.ids)
@@ -63,7 +68,7 @@ class Page:
     def open(self, hash_):
         self.call("Page.navigate", url="about:blank")
         time.sleep(0.3)
-        self.call("Page.navigate", url=APP + "#" + hash_ + "&" + LOOK)
+        self.call("Page.navigate", url=self.app + "#" + hash_ + "&" + self.look)
         self.wait("typeof map !== 'undefined' && map.loaded() && !!grid")
         self.settle()
 
@@ -71,13 +76,13 @@ class Page:
         self.wait("map.loaded() && map.areTilesLoaded()")
         time.sleep(1.2)
 
-    def shot(self, name, clip=None):
-        params = {"format": "jpeg", "quality": 80}
+    def shot(self, name, clip=None, quality=80):
+        params = {"format": "jpeg", "quality": quality}
         if clip:
             params["clip"] = {**clip, "scale": 1}
         data = self.call("Page.captureScreenshot", **params)["data"]
-        (OUT / name).write_bytes(base64.b64decode(data))
-        print(f"{name}: {(OUT / name).stat().st_size / 1000:.0f} kB")
+        (self.out / name).write_bytes(base64.b64decode(data))
+        print(f"{name}: {(self.out / name).stat().st_size / 1000:.0f} kB")
 
     def close(self):
         self.proc.terminate()
