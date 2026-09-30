@@ -91,6 +91,12 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   lines, interchanges and waits. It appears at the top of the panel; the red *✕ Close*
   or Esc removes it. The legend card also shows the start point's key-destinations score
   (below); clicking it opens the profile view.
+
+  ![Travel times from Serangoon North with the bus routes overlay on, and the route to Ang Mo Kio station on bus 73](docs/screenshots/5-bus-route.jpg)
+
+  *Serangoon North is 2 km from the nearest MRT station, yet bus 73 gets to Ang Mo Kio
+  station in 22 minutes, waiting included; without buses it's a 37-minute walk. The thin
+  lines are bus routes (Advanced settings → Overlays).*
 - **To several places**: click up to five places, such as workplaces, schools or family,
   or add them from the landmarks table. The heatmap then shows, for every spot, the
   average door-to-door time from there to the places: where to live or meet so the trips
