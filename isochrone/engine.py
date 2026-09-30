@@ -30,12 +30,14 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 
-from . import config, geo, osm, transit
+from . import barriers, config, geo, osm, transit
 
 EPS = 1e-3          # seconds; stands in for zero-cost edges (explicit zeros are fragile in sparse graphs)
 OFF = 1e9           # weight of a disabled edge
-ORIGIN_K = 4        # the clicked point connects to this many nearby network nodes
+ORIGIN_K = 6        # links from the clicked point: its FOOTPATH_K nearest footpaths, nearest exit and stop
+FOOTPATH_K = 4
 ORIGIN_MAX_M = 1000.0
+DIRECT_MAX_M = 600.0  # near the origin, spots under this walk (500 m straight) can be walked to directly
 LAND_MARGIN_M = 150.0  # points this far off the URA coastline still count as land (piers, new reclamation)
 CACHE_SIZE = 12     # recent searches kept (~4.5 MB each): up to five places plus the start point
 PLACE_CACHE_BYTES = 96 * 2**20  # profile maps: each place's times on a grid, kept per setting
@@ -105,7 +107,7 @@ class _Csr:
         indices = self.indices.copy()
         m = len(origin_nodes)
         indices[-ORIGIN_K:][:m] = origin_nodes
-        data[-ORIGIN_K:][:m] = np.maximum(origin_s, EPS)
+        data[-ORIGIN_K:][:m] = np.where(np.isfinite(origin_s), np.maximum(origin_s, EPS), OFF)  # inf: no usable link
         graph = csr_matrix((data, indices, self.indptr), shape=(self.n, self.n))
         return dijkstra(graph, directed=True, indices=self.origin, limit=limit, return_predecessors=predecessors)
 
@@ -153,16 +155,29 @@ class Engine:
         if not (b / "meta.json").exists():
             raise FileNotFoundError("No network build found. Run `python -m isochrone build` first.")
         self.meta = json.loads((b / "meta.json").read_text(encoding="utf-8"))
+        if self.meta.get("format") != config.BUILD_FORMAT:
+            raise FileNotFoundError("The network build is from an older version of this app. "
+                                    "Run `python -m isochrone build` (run.sh does this by itself).")
         walk, drive, tr = np.load(b / "walk.npz"), np.load(b / "drive.npz"), np.load(b / "transit.npz")
         self.grids = dict(np.load(b / "grids.npz"))
         self.walk_x, self.walk_y = walk["x"].astype(np.float64), walk["y"].astype(np.float64)
         self.drive_x, self.drive_y = drive["x"].astype(np.float64), drive["y"].astype(np.float64)
         self.W = len(self.walk_x)
-        wm, dm = np.nonzero(walk["major"])[0], np.nonzero(drive["major"])[0]
-        self.walk_ids, self.walk_tree = wm, cKDTree(np.column_stack([self.walk_x[wm], self.walk_y[wm]]))
-        self.drive_ids, self.drive_tree = dm, cKDTree(np.column_stack([self.drive_x[dm], self.drive_y[dm]]))
         self._build_transit(walk, tr)
         self._build_drive(drive)
+        # Points join the network by straight walks that cross no barrier (as the build joined
+        # map cells): to footpaths, bus stops and station exits, or to roads for a car.
+        self.barriers = barriers.Barriers.load()
+        o = self.offsets
+        if self.meta["snap"]["node_offsets"] != {"stop": o["stop"], "entrance": o["entrance"]}:
+            raise RuntimeError("data/build does not match this code's transit-graph layout; rebuild it.")
+        wm, dm = np.nonzero(walk["major"])[0], np.nonzero(drive["major"])[0]
+        self.pools = {
+            "walk": barriers.Pool(wm, self.walk_x[wm], self.walk_y[wm]),
+            "exit": barriers.Pool(o["entrance"] + np.arange(len(tr["entrance_x"])), tr["entrance_x"], tr["entrance_y"]),
+            "stop": barriers.Pool(o["stop"] + np.arange(len(tr["stop_x"])), tr["stop_x"], tr["stop_y"]),
+            "car": barriers.Pool(dm, self.drive_x[dm], self.drive_y[dm]),
+        }
         self._cache: OrderedDict = OrderedDict()
         self._lock = threading.Lock()
         # profile maps run outside self._lock (their searches take seconds), under their own lock
@@ -246,14 +261,36 @@ class Engine:
                                       "description": profile.get("description", ""), "items": items,
                                       "place_weights": list(place_weights.items()), "skipped": skipped})
         if self.key_places:
-            pts = np.column_stack(geo.to_xy([p["lon"] for p in self.key_places], [p["lat"] for p in self.key_places]))
-            self.key_xy = pts
+            x, y = geo.to_xy([p["lon"] for p in self.key_places], [p["lat"] for p in self.key_places])
             self.key_snap = {}
-            for kind, tree, ids in (("transit", self.walk_tree, self.walk_ids), ("car", self.drive_tree, self.drive_ids)):
-                d, i = tree.query(pts, k=ORIGIN_K)
-                self.key_snap[kind] = (ids[i], d * config.STRAIGHT_LINE_DETOUR)
+            for mode in ("transit", "car"):
+                nodes, metres, sx, sy, moved = self._snap(mode, x, y)
+                self.key_snap[mode] = (nodes, metres)
+            self.key_xy, self.key_moved = np.column_stack([sx, sy]), moved  # where each stands, off any barrier
 
-    def _key_destinations(self, req: Request, dist: np.ndarray, x: float, y: float) -> dict | None:
+    def _snap(self, mode: str, x, y, max_m: float = ORIGIN_MAX_M):
+        """Links from points into the network by straight, barrier-aware walks: to their
+        FOOTPATH_K nearest footpaths (or roads, by car) and, on foot, their nearest station
+        exit and bus stop. See barriers.snap."""
+        if mode == "car":
+            targets = [(self.pools["car"], FOOTPATH_K, max_m)]
+        else:
+            targets = [(self.pools["walk"], FOOTPATH_K, max_m), (self.pools["exit"], 1, config.ACCESS_SNAP_M),
+                       (self.pools["stop"], 1, config.ACCESS_SNAP_M)]
+        return barriers.snap(self.barriers, x, y, targets, fallback=True)
+
+    def _direct_s(self, x: float, y: float, moved: float, tx: np.ndarray, ty: np.ndarray, t_moved, v: float):
+        """Seconds to walk straight from (x, y) to each target: near the origin this can beat
+        the network. Only walks under DIRECT_MAX_M that cross no barrier (inf for the rest)."""
+        metres = (moved + t_moved + np.hypot(tx - x, ty - y)) * config.STRAIGHT_LINE_DETOUR
+        near = np.flatnonzero(metres < DIRECT_MAX_M)
+        if len(near) and self.barriers is not None:
+            near = near[self.barriers.clear(np.full(len(near), x), np.full(len(near), y), tx[near], ty[near])]
+        out = np.full(len(tx), np.inf)
+        out[near] = metres[near] / v
+        return out
+
+    def _key_destinations(self, req: Request, dist: np.ndarray, x: float, y: float, moved: float) -> dict | None:
         """For each profile: the travel time from the origin to each of its places, group
         averages and the weighted average. Places beyond the routing cut-off count as the cut-off."""
         if not self.key_places:
@@ -262,8 +299,7 @@ class Engine:
         nodes, metres = self.key_snap[req.mode]
         extra = req.parking_min * 60 if req.mode == "car" else 0.0
         t = (dist[nodes] + metres / v).min(axis=1) + extra
-        direct = np.hypot(self.key_xy[:, 0] - x, self.key_xy[:, 1] - y) * config.STRAIGHT_LINE_DETOUR / v
-        t = np.minimum(t, np.where(direct < 600 / v, direct, np.inf))
+        t = np.minimum(t, self._direct_s(x, y, moved, self.key_xy[:, 0], self.key_xy[:, 1], self.key_moved, v))
         limit = config.MAX_MINUTES * 60
         reached = t <= limit
         minutes = np.where(reached, t, limit) / 60
@@ -430,45 +466,48 @@ class Engine:
     def _search(self, req: Request) -> tuple[np.ndarray, np.ndarray, float, float, dict]:
         """Dijkstra from the request's point, or for direction "to", towards it over the
         reversed graph (each node's time to reach the point). Cached: switching resolution,
-        parking allowance or asking for a route reuses the same search."""
+        parking allowance or asking for a route reuses the same search. Returns the times,
+        predecessors, where the point stands once off any barrier (x, y), and info with
+        "moved_m", how far it stepped off one."""
         key = (req.mode, req.direction, round(req.lon, 6), round(req.lat, 6), req.band, req.wait, req.walk_kmh,
                req.bus, req.rail, req.voiddeck)
         x, y = (float(c) for c in geo.to_xy(req.lon, req.lat))
         self._check_on_land(x, y)
         if key in self._cache:
             self._cache.move_to_end(key)
-            dist, pred, snap_m = self._cache[key]
-            return dist, pred, x, y, {"cached": True, "snap_m": snap_m}
+            dist, pred, snap = self._cache[key]
+            return dist, pred, snap["x"], snap["y"], snap | {"cached": True}
         t0 = time.perf_counter()
         v = req.walk_kmh / 3.6
         graph, weights = self._graph_and_weights(req, forward=req.direction == "from")
-        tree, ids = (self.walk_tree, self.walk_ids) if req.mode == "transit" else (self.drive_tree, self.drive_ids)
-        d, i = tree.query([x, y], k=ORIGIN_K)
-        if d[0] > ORIGIN_MAX_M:
+        nodes, metres, sx, sy, moved = self._snap(req.mode, x, y)
+        if not np.isfinite(metres[0]).any():
             raise ValueError("That point is too far from any footpath or road in Singapore.")
         t1 = time.perf_counter()
-        dist, pred = graph.run(weights, ids[i], d * config.STRAIGHT_LINE_DETOUR / v, config.MAX_MINUTES * 60)
+        dist, pred = graph.run(weights, nodes[0], metres[0] / v, config.MAX_MINUTES * 60)
         t2 = time.perf_counter()
-        self._cache[key] = (dist, pred, float(d[0]))
+        snap = {"x": float(sx[0]), "y": float(sy[0]), "moved_m": float(moved[0]),
+                "snap_m": float(metres[0].min() / config.STRAIGHT_LINE_DETOUR)}
+        self._cache[key] = (dist, pred, snap)
         while len(self._cache) > CACHE_SIZE:
             self._cache.popitem(last=False)
-        return dist, pred, x, y, {"cached": False, "snap_m": float(d[0]),
-                                  "weights_ms": round((t1 - t0) * 1000), "dijkstra_ms": round((t2 - t1) * 1000)}
+        return dist, pred, snap["x"], snap["y"], snap | {
+            "cached": False, "weights_ms": round((t1 - t0) * 1000), "dijkstra_ms": round((t2 - t1) * 1000)}
 
-    def _cell_times(self, req: Request, dist: np.ndarray, x: float, y: float) -> tuple[np.ndarray, np.ndarray]:
-        """Seconds to reach each land cell of the requested grid (and the cell ids)."""
+    def _cell_times(self, req: Request, dist: np.ndarray, x: float, y: float,
+                    moved: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+        """Seconds to reach each land cell of the requested grid (and the cell ids), from a
+        search whose point stands at (x, y) having stepped ``moved`` metres off a barrier."""
         g = self.meta["grids"][req.res]
         v = req.walk_kmh / 3.6
         kind = "walk" if req.mode == "transit" else "drive"
         nodes, metres = self.grids[f"{req.res}_{kind}_node"], self.grids[f"{req.res}_{kind}_m"]
         extra = req.parking_min * 60 if req.mode == "car" else 0.0
         cell_s = (dist[nodes] + metres / v).min(axis=1) + extra
-        # near the origin, walking straight there can beat the network
         cells = self.grids[f"{req.res}_cell"]
         cx = g["origin_xy"][0] + (cells % g["nx"] + 0.5) * g["res_m"]
         cy = g["origin_xy"][1] - (cells // g["nx"] + 0.5) * g["res_m"]
-        direct = np.hypot(cx - x, cy - y) * config.STRAIGHT_LINE_DETOUR / v
-        return np.minimum(cell_s, np.where(direct < 600 / v, direct, np.inf)), cells
+        return np.minimum(cell_s, self._direct_s(x, y, moved, cx, cy, 0.0, v)), cells
 
     @_serialised
     def isochrone(self, req: Request) -> dict:
@@ -476,7 +515,7 @@ class Engine:
         t0 = time.perf_counter()
         dist, _, x, y, info = self._search(req)
         t1 = time.perf_counter()
-        cell_s, cells = self._cell_times(req, dist, x, y)
+        cell_s, cells = self._cell_times(req, dist, x, y, info["moved_m"])
         g = self.meta["grids"][req.res]
         grid = np.full(g["nx"] * g["ny"], NO_DATA, np.uint16)
         grid[cells] = _tenths(cell_s)
@@ -488,7 +527,8 @@ class Engine:
             "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
             "direction": req.direction,
             "area_km2": {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)},
-            "key_destinations": self._key_destinations(req, dist, x, y) if req.direction == "from" else None,
+            "key_destinations": (self._key_destinations(req, dist, x, y, info["moved_m"])
+                                 if req.direction == "from" else None),
             "timing_ms": {"search": round((t1 - t0) * 1000), "grid": round((t2 - t1) * 1000),
                           "cached": info["cached"]},
         }
@@ -504,8 +544,8 @@ class Engine:
     def key_destinations_at(self, req: Request) -> dict | None:
         """Every profile's key-destination scores for a start point, without the grid."""
         req.validate()
-        dist, _, x, y, _ = self._search(replace(req, direction="from"))
-        return self._key_destinations(req, dist, x, y)
+        dist, _, x, y, info = self._search(replace(req, direction="from"))
+        return self._key_destinations(req, dist, x, y, info["moved_m"])
 
     # --- profile maps -----------------------------------------------------------
 
@@ -568,7 +608,7 @@ class Engine:
         v = req.walk_kmh / 3.6
         nodes, metres = self.key_snap[req.mode]
         dist = graph.run(weights, nodes[place], metres[place] / v, config.MAX_MINUTES * 60, predecessors=False)
-        cell_s, _ = self._cell_times(req, dist, *self.key_xy[place])
+        cell_s, _ = self._cell_times(req, dist, *self.key_xy[place], self.key_moved[place])
         return _tenths(cell_s)
 
     def _keep_place_times(self, key: tuple, times: np.ndarray) -> None:
@@ -584,23 +624,22 @@ class Engine:
     def route(self, req: Request, to_lon: float, to_lat: float) -> dict:
         """Fastest itinerary from the request origin to a point, as legs with geometry."""
         req.validate()
-        dist, pred, x, y, _ = self._search(req)
+        dist, pred, x, y, info = self._search(req)
         v = req.walk_kmh / 3.6
         tx, ty = (float(c) for c in geo.to_xy(to_lon, to_lat))
         self._check_on_land(tx, ty)
-        tree, ids =(self.walk_tree, self.walk_ids) if req.mode == "transit" else (self.drive_tree, self.drive_ids)
-        d, i = tree.query([tx, ty], k=ORIGIN_K)
-        cand = dist[ids[i]] + d * config.STRAIGHT_LINE_DETOUR / v
+        nodes, metres, sx, sy, t_moved = self._snap(req.mode, tx, ty)
+        cand = dist[nodes[0]] + metres[0] / v
         best = int(np.argmin(cand))
-        direct = np.hypot(tx - x, ty - y) * config.STRAIGHT_LINE_DETOUR / v
+        direct = self._direct_s(x, y, info["moved_m"], sx, sy, t_moved, v)[0]
         extra = req.parking_min * 60 if req.mode == "car" else 0.0
-        if not np.isfinite(cand[best]) and direct >= 600 / v:
+        if not np.isfinite(cand[best]) and not np.isfinite(direct):
             return {"reachable": False}
-        if direct < 600 / v and direct <= cand[best] + extra:
+        if direct <= cand[best] + extra:
             return {"reachable": True, "total_s": round(direct), "legs": [
                 {"type": "walk", "seconds": round(direct), "coords": [[req.lon, req.lat], [to_lon, to_lat]]}]}
 
-        path = [int(ids[i[best]])]
+        path = [int(nodes[0, best])]
         while pred[path[-1]] >= 0:
             path.append(int(pred[path[-1]]))
         path.reverse()
@@ -616,7 +655,7 @@ class Engine:
                 legs.append({"type": "park", "seconds": round(extra)})
         legs.insert(0, {"type": "walk", "seconds": round(dist[path[0]]),
                         "coords": [[req.lon, req.lat]] + self._coords(path[:1], drive=req.mode == "car")})
-        tail = d[best] * config.STRAIGHT_LINE_DETOUR / v
+        tail = metres[0, best] / v
         legs.append({"type": "walk", "seconds": round(tail),
                      "coords": self._coords(path[-1:], drive=req.mode == "car") + [[to_lon, to_lat]]})
         merged = []

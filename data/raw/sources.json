@@ -1,4 +1,22 @@
 {
+  "barriers": {
+    "fetched_at": "2026-09-30T01:06:29+00:00",
+    "licence": "ODbL 1.0, (c) OpenStreetMap contributors",
+    "note": "hdb-resale-analysis pipeline/06b_barriers.py output, variant 'main'",
+    "osm_timestamps": [
+      "2026-07-15T15:22:01Z",
+      "2026-07-24T11:04:51Z",
+      "2026-09-29T14:42:36Z",
+      "2026-09-29T14:44:37Z",
+      "2026-09-29T14:45:38Z",
+      "2026-09-29T14:48:42Z",
+      "2026-09-29T14:55:51Z",
+      "2026-09-29T15:08:05Z",
+      "2026-09-29T15:11:06Z",
+      "2026-09-29T15:15:06Z"
+    ],
+    "url": "../public-dataset-research/hdb-resale-analysis"
+  },
   "busrouter": {
     "fetched_at": "2026-09-26T00:35:00+00:00",
     "last_updated": "2026-09-01T01:00:31.345Z",

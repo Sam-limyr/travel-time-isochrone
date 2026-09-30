@@ -177,7 +177,7 @@ description = "Works in the industrial estates: mostly Jurong and Tuas in the we
 
 [industrial.groups."Work: east and central"]  # 17%
 "Loyang Industrial Estate" = { weight = 3, lat = 1.3710, lon = 103.9700 }
-"Changi Airfreight Centre" = { weight = 3, lat = 1.3722, lon = 103.9946 }
+"Changi Airfreight Centre" = { weight = 3, lat = 1.3843, lon = 103.9990 }  # its cargo checkpoint, the way in
 "Changi South Industrial Estate" = { weight = 2, lat = 1.3335, lon = 103.9660 }
 "Tampines Wafer Fab Park" = { weight = 2, lat = 1.3732, lon = 103.9306 }
 "Kaki Bukit Industrial Estate" = { weight = 2, lat = 1.3325, lon = 103.9041 }

@@ -1,0 +1,148 @@
+{
+  "source": "OpenStreetMap via Overpass API",
+  "licence": "ODbL 1.0 - (c) OpenStreetMap contributors",
+  "osm_timestamps": [
+    "2026-07-15T15:22:01Z",
+    "2026-07-24T11:04:51Z",
+    "2026-09-29T14:42:36Z",
+    "2026-09-29T14:44:37Z",
+    "2026-09-29T14:45:38Z",
+    "2026-09-29T14:48:42Z",
+    "2026-09-29T14:55:51Z",
+    "2026-09-29T15:08:05Z",
+    "2026-09-29T15:11:06Z",
+    "2026-09-29T15:15:06Z"
+  ],
+  "grid": {
+    "res_m": 3.0,
+    "nx": 16706,
+    "ny": 9593,
+    "x0": 2000.0,
+    "y0": 22500.0
+  },
+  "strip_half_width_m": {
+    "expressway": 12.0,
+    "major_road": 7.0,
+    "secondary_road": 5.0,
+    "waterway": 4.0,
+    "railway": 4.0
+  },
+  "gap_margin_m": 4.0,
+  "road_bridge_corridor_half_width_m": 12.0,
+  "water_corridor_half_width_m": 4.5,
+  "variants": {
+    "main": [
+      "expressway",
+      "major_road",
+      "waterway",
+      "railway"
+    ],
+    "with_secondary": [
+      "expressway",
+      "major_road",
+      "secondary_road",
+      "waterway",
+      "railway"
+    ]
+  },
+  "barrier_km2": {
+    "main": 210.04,
+    "with_secondary": 215.75
+  },
+  "line_km": {
+    "expressway": {
+      "bridge": 49.1,
+      "ground": 295.5,
+      "tunnel": 30.2
+    },
+    "expressway_ramp": {
+      "bridge": 37.5,
+      "ground": 238.1,
+      "tunnel": 9.4
+    },
+    "major_road": {
+      "bridge": 84.9,
+      "ground": 1124.3,
+      "tunnel": 19.8
+    },
+    "railway": {
+      "bridge": 245.5,
+      "ground": 146.4,
+      "tunnel": 421.2
+    },
+    "secondary_road": {
+      "bridge": 13.7,
+      "ground": 630.5,
+      "tunnel": 3.3
+    },
+    "waterway": {
+      "bridge": 0.0,
+      "ground": 427.0,
+      "tunnel": 68.7
+    }
+  },
+  "polygons": {
+    "fenced:aerodrome": 1,
+    "fenced:commercial": 1,
+    "fenced:education": 14,
+    "fenced:golf_course": 25,
+    "fenced:grass": 1,
+    "fenced:military": 100,
+    "fenced:prison": 6,
+    "fenced:school": 520,
+    "water:Fountain": 2,
+    "water:basin": 39,
+    "water:canal": 220,
+    "water:cove": 3,
+    "water:drain": 12,
+    "water:fountain": 21,
+    "water:lagoon": 2,
+    "water:lake": 76,
+    "water:moat": 1,
+    "water:pond": 624,
+    "water:pool": 2,
+    "water:reflecting_pool": 9,
+    "water:reservoir": 70,
+    "water:river": 155,
+    "water:stream": 98,
+    "water:sungei_lanchar": 2,
+    "water:swimming_pool": 2,
+    "water:wastewater": 48,
+    "water:water": 594,
+    "water:water_body": 1,
+    "water:yes": 4
+  },
+  "fenced_polygons_dropped": 3,
+  "gaps": {
+    "expressway": {
+      "a_path_crosses": 420,
+      "b_paths_both_sides": 4,
+      "c_crossing_node": 0,
+      "d_junction": 0
+    },
+    "major_road": {
+      "a_path_crosses": 1198,
+      "b_paths_both_sides": 4464,
+      "c_crossing_node": 5614,
+      "d_junction": 707
+    },
+    "railway": {
+      "a_path_crosses": 67,
+      "b_paths_both_sides": 22,
+      "c_crossing_node": 0,
+      "d_junction": 0
+    },
+    "secondary_road": {
+      "a_path_crosses": 393,
+      "b_paths_both_sides": 4680,
+      "c_crossing_node": 4701,
+      "d_junction": 352
+    },
+    "waterway": {
+      "a_path_crosses": 956,
+      "b_paths_both_sides": 18,
+      "c_crossing_node": 0,
+      "d_junction": 0
+    }
+  }
+}

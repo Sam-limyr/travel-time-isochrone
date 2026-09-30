@@ -75,6 +75,38 @@ def test_general_profile_is_the_fastest_journey_sample():
     }
 
 
+def test_barrier_aware_straight_walks(tmp_path):
+    """A synthetic 3 m barrier grid: a wall 6 m thick, open for 12 m at one place."""
+    from isochrone import barriers
+    x0, y0 = geo.to_xy(103.85, 1.30)                     # local metres of the grid's centre
+    sx, sy = geo.to_svy21(103.85, 1.30)
+    wall = np.zeros((40, 40), bool)                      # rows run north from the grid's south edge
+    wall[:, 26:28] = True                                # 18-24 m east of the centre
+    wall[30:34, 26:28] = False                           # the crossing: 30-42 m north of the centre
+    np.savez(tmp_path / "b.npz", main=np.packbits(wall), nx=40, ny=40, x0=sx - 60, y0=sy - 60, res=3.0)
+    b = barriers.Barriers(tmp_path / "b.npz")
+    at = lambda dx, dy: (x0 + dx, y0 + dy)
+    walk = lambda a, c: bool(b.clear(*at(*a), *at(*c))[0])
+    assert not walk((0, 0), (40, 0))                     # through the wall
+    assert walk((0, 0), (0, 40))                         # along it
+    assert walk((0, 36), (40, 36))                       # through the crossing
+    assert walk((22, 0), (40, 0)) and walk((0, 0), (22, 0))  # starting or ending on it
+    x, y, moved = b.step_off(*at(22.5, 0))
+    assert 0 < moved[0] <= 4.5 and not b.on_barrier(x, y)[0]
+    pool = barriers.Pool(np.array([10, 11]), *zip(at(-10, 0), at(35, 0)))
+    nodes, metres, *_ = barriers.snap(b, *at(30, 0), [(pool, 2, 100)])
+    assert nodes[0, 0] == 11 and np.isinf(metres[0, 1])  # only the node on its own side
+    nodes, metres, *_ = barriers.snap(b, *at(30, 0), [(barriers.Pool(np.array([10]), *at(-10, 0)), 1, 100)],
+                                      fallback=True)
+    assert nodes[0, 0] == 10 and np.isfinite(metres[0, 0])  # nothing on its side: a plain link instead
+
+
+def test_svy21_matches_onemap():
+    # a Bedok block, as OneMap gives it in both systems
+    x, y = geo.to_svy21(103.9383897130026, 1.334138999740372)
+    assert (float(x), float(y)) == pytest.approx((39693.32218826097, 35148.07829188742), abs=0.001)
+
+
 def test_gap_stats_regular_and_bunched():
     regular = np.arange(0, 7200, 300.0)  # every 5 min
     assert transit.gap_stats(regular, 7200) == (0.0, 150.0, 300.0)

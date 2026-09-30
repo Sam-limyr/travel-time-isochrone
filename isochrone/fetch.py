@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -252,8 +253,39 @@ def fetch_busrouter() -> None:
                    licence="Route lines from github.com/cheeaun/sgbusdata (derived from LTA data)")
 
 
+# --- Barrier grid (copied from the sibling hdb-resale-analysis project) ------------
+
+BARRIER_DIR = config.RAW / "barriers"
+
+
+def fetch_barriers() -> None:
+    """Copy the 3 m barrier grid that the hdb-resale-analysis project derives from
+    OpenStreetMap (its pipeline step 06b) from the folder next to this one. Nothing is
+    downloaded; without that project, the committed copy stays as it is."""
+    import shutil
+
+    src = config.BARRIER_SOURCE
+    files = {src / "data" / "osm" / "barrier_raster.npz": config.BARRIERS,
+             src / "data" / "mrt" / "barrier_network_meta.json": BARRIER_DIR / "barrier_network_meta.json"}
+    missing = [str(p) for p in files if not p.exists()]
+    if missing:
+        print(f"Barrier grid: not found ({', '.join(missing)}); keeping {BARRIER_DIR.relative_to(config.ROOT)}")
+        return
+    print("Barrier grid: copying from the hdb-resale-analysis project ...")
+    BARRIER_DIR.mkdir(parents=True, exist_ok=True)
+    for a, b in files.items():
+        shutil.copy2(a, b)
+    meta = json.loads((BARRIER_DIR / "barrier_network_meta.json").read_text(encoding="utf-8"))
+    g = meta["grid"]
+    print(f"  {config.BARRIERS.stat().st_size / 1e6:.1f} MB: {g['nx']} x {g['ny']} cells of {g['res_m']:.0f} m, "
+          f"{meta['barrier_km2']['main']} km² of barriers")
+    _record_source("barriers", url=Path(os.path.relpath(src, config.ROOT)).as_posix(), osm_timestamps=meta.get("osm_timestamps"),
+                   note="hdb-resale-analysis pipeline/06b_barriers.py output, variant 'main'",
+                   licence="ODbL 1.0, (c) OpenStreetMap contributors")
+
+
 FETCHERS = {"lta": fetch_lta, "speeds": fetch_peak_speeds, "osm": fetch_osm, "hdb": fetch_hdb,
-            "boundary": fetch_boundary, "busrouter": fetch_busrouter}
+            "boundary": fetch_boundary, "busrouter": fetch_busrouter, "barriers": fetch_barriers}
 
 
 def fetch(only: list[str] | None = None, force: bool = False) -> None:

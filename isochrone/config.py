@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# data/build's layout; older builds are rebuilt (`isochrone build --if-needed`, as run.sh does).
+# 2: map cells also join bus stops and station exits, and straight walks are barrier-aware.
+BUILD_FORMAT = 2
 DATA = ROOT / "data"
 RAW = DATA / "raw"        # small public datasets, committed to git
 MANUAL = DATA / "manual"  # hand-curated inputs, committed to git
@@ -57,6 +60,17 @@ LEISURELY_WALK_KMH = 4.0
 STEPS_FACTOR = 1.4        # stairs take longer than the same horizontal distance
 VOIDDECK_FACTOR = 1.15    # weaving round lift lobbies and pillars under an HDB block
 STRAIGHT_LINE_DETOUR = 1.2  # applied to off-network straight-line walks (snapping)
+# Off-network walks are barrier-aware: they may not cross an expressway, major road, river
+# or canal, water, at-grade railway or fenced grounds except where OpenStreetMap maps a
+# crossing. The 3 m barrier grid is the hdb-resale-analysis project's, copied by
+# `isochrone fetch --only barriers` from the folder next to this one. See isochrone/barriers.py.
+BARRIERS = RAW / "barriers" / "barrier_raster.npz"
+BARRIER_SOURCE = ROOT.parent / "public-dataset-research" / "hdb-resale-analysis"
+BARRIER_MOVE_MAX_M = 60.0  # a point on a barrier (a road, a canal) steps off it to open ground this near
+# Besides its nearest footpaths, every map cell and clicked point joins its nearest station
+# exit and nearest bus stop directly if a straight, barrier-aware walk reaches them within
+# this distance, so the last few metres to an exit don't depend on OpenStreetMap having them.
+ACCESS_SNAP_M = 400.0
 
 # --- Buses --------------------------------------------------------------------
 # Running times come from LTA's scheduled first/last-bus arrival times at each stop.

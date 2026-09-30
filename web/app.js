@@ -1418,10 +1418,12 @@ function buildAbout() {
     el("li", {}, `Trains: LTA's official GTFS timetable (published ${date(s.lta_datamall?.train_gtfs_timestamp)}), service day ${meta.service_date}.`),
     el("li", {}, `Walking & roads: OpenStreetMap extract (${s.openstreetmap?.last_modified ? date(s.openstreetmap.last_modified) : "?"}).`),
     el("li", {}, `HDB void decks: HDB building footprints (data.gov.sg); land outline: URA Master Plan 2019.`),
+    el("li", {}, `Barriers to walking: the hdb-resale-analysis project's 3 m grid of expressways, major roads, rivers, canals, railways and fenced grounds, from OpenStreetMap.`),
     el("li", {}, `Bus route lines for the overlay: busrouter.sg (mirror of LTA data, ${date(s.busrouter?.last_updated)}).`),
   );
   const model = el("ul", {},
     el("li", {}, "Public transport: walk along real footpaths (and through HDB void decks), wait, ride, change. One shortest-path search per click."),
+    el("li", {}, "Walks off the mapped footpaths are straight lines (×1.2) that don't cross an expressway, major road, river, canal, railway or fenced grounds except at a mapped crossing: from a spot to its nearest footpaths, and directly to its nearest station exit and bus stop within 400 m, so they don't depend on OpenStreetMap mapping every short path."),
     el("li", {}, "Bus waits come from LTA's published frequency for each service and time band (most run more often in the peaks); running times from LTA's scheduled times, adjusted for peak traffic."),
     el("li", {}, "Train waits come from each line's published peak and off-peak frequency (below): half the gap between trains on average, the longest gap at worst. Running times come from the official timetable, calibrated per line as the feed rounds them up to whole minutes. Interchange walks use the Reddit-measured timings, scaled by walking speed."),
     el("li", {}, "Getting between the street and a platform takes a time per station (below), scaled by walking speed: deeper stations take longer. Entrances well away from the platform add the extra walk."),

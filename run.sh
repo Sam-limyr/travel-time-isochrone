@@ -95,10 +95,9 @@ poetry install --no-interaction
 python=$(poetry env info --executable | tr -d '\r')
 if [ "$os" = windows ]; then python=$(cygpath -u "$python"); fi
 
-if [ ! -f data/build/meta.json ]; then
-  echo "Building the walking, driving and transit networks (about a minute; downloads ~40 MB of OpenStreetMap data) ..."
-  "$python" -m isochrone build
-fi
+# Builds the walking, driving and transit networks the first time (about two minutes, and
+# a ~40 MB OpenStreetMap download), and again after an update changes their format.
+"$python" -m isochrone build --if-needed
 
 # Ctrl-C or closing the terminal must stop the server too. The server runs in the
 # background so these signals reach this script; on Windows it is a native process

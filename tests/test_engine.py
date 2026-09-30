@@ -201,6 +201,27 @@ def test_station_access_by_depth_and_line(engine):
     assert w[ins].min() == pytest.approx(30)
 
 
+def test_short_walks_do_not_cross_the_river(engine):
+    """Near the start, spots are walked to straight, but not across a barrier: here the
+    Singapore River at Robertson Quay."""
+    from isochrone import geo
+    ox, oy = (float(c) for c in geo.to_xy(103.8420, 1.2893))            # south bank
+    tx, ty = geo.to_xy([103.8420, 103.8435], [1.2903, 1.2893])           # over the water; along the bank
+    across, along = engine._direct_s(ox, oy, 0.0, np.asarray(tx), np.asarray(ty), 0.0, 1.0)
+    assert np.isinf(across) and along == pytest.approx(167 * config.STRAIGHT_LINE_DETOUR, rel=0.02)
+
+
+def test_blocks_walk_straight_to_a_nearby_exit(engine):
+    """Block 95 Havelock Road is 71 m from Havelock station's Exit 3, but OpenStreetMap's
+    paths take 480 m; the block joins the exit directly (hdb-resale-analysis example)."""
+    from isochrone import geo
+    x, y = geo.to_xy(103.8328481657507, 1.288475430741213)
+    nodes, metres, *_ = engine._snap("transit", x, y)
+    exits = nodes[0] >= engine.offsets["entrance"]
+    assert exits.any() and metres[0][exits].min() == pytest.approx(71 * config.STRAIGHT_LINE_DETOUR, abs=10)
+    assert engine.barriers is not None and engine.meta["snap"]["barriers"]
+
+
 def test_invalid_requests_raise(engine):
     from isochrone.engine import Request
     with pytest.raises(ValueError):

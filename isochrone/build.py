@@ -16,7 +16,7 @@ import numpy as np
 import shapely
 from scipy.spatial import cKDTree
 
-from . import config, fetch, geo, osm, transit
+from . import barriers, config, fetch, geo, osm, transit
 
 VOIDDECK_NEAR_M = 15.0   # footpath nodes this close to an HDB block can use its void deck
 VOIDDECK_MAX_M = 100.0   # longest cut-through considered
@@ -24,10 +24,17 @@ VOIDDECK_PER_NODE = 4
 MAJOR_COMPONENT = 1000   # walk components smaller than this are ignored for snapping
 STOP_SNAP_M = 150.0
 ENTRANCE_SNAP_M = 300.0
+DRIVE_SNAP_M = 1000.0    # a car is parked at most this far from a map cell
 
 
 def _log(t0: float, msg: str) -> None:
     print(f"[{time.time() - t0:5.1f}s] {msg}", flush=True)
+
+
+def build_is_current() -> bool:
+    """Whether data/build holds a build in the format this code reads."""
+    path = config.BUILD / "meta.json"
+    return path.exists() and json.loads(path.read_text(encoding="utf-8")).get("format") == config.BUILD_FORMAT
 
 
 def reference_weekday(today: date | None = None) -> date:
@@ -82,21 +89,21 @@ def voiddeck_edges(x: np.ndarray, y: np.ndarray, candidates: np.ndarray):
     return np.concatenate([u, v]), np.concatenate([v, u]), np.concatenate([d, d]), len(blocks)
 
 
-def _snap(tree: cKDTree, ids: np.ndarray, x, y, k: int, max_m: float):
-    """(item, node, metres) links from points to their k nearest network nodes within max_m."""
-    d, i = tree.query(np.column_stack([x, y]), k=k)
-    d, i = np.atleast_2d(d), np.atleast_2d(i)
-    item = np.repeat(np.arange(len(d)), k)
-    d, i = d.ravel(), i.ravel()
-    ok = d <= max_m
-    return item[ok].astype(np.int32), ids[i[ok]].astype(np.int32), (d[ok] * config.STRAIGHT_LINE_DETOUR).astype(np.float32)
+def _snap(barrier, pool: barriers.Pool, x, y, k: int, max_m: float):
+    """(item, node, metres) links from points to their k nearest network nodes within max_m
+    that they can walk to in a straight line without crossing a barrier."""
+    node, metres, *_ = barriers.snap(barrier, x, y, [(pool, k, max_m)], fallback=True)
+    ok = np.isfinite(metres)
+    item = np.repeat(np.arange(len(node)), k).reshape(node.shape)
+    return item[ok].astype(np.int32), node[ok].astype(np.int32), metres[ok].astype(np.float32)
 
 
-def build_grids(land, walk_x, walk_y, walk_ok, drive_x, drive_y, drive_ok) -> tuple[dict, dict]:
+def build_grids(land, barrier, walk_targets: list, drive_targets: list) -> tuple[dict, dict]:
+    """Per land cell, the network nodes it joins by a straight, barrier-aware walk: for
+    public transport its nearest footpaths, station exit and bus stop; for a car, its
+    nearest roads (see barriers.snap for the targets). Cells that reach nothing within
+    reach are left out (no data)."""
     minx, miny, maxx, maxy = land.bounds
-    walk_ids, drive_ids = np.nonzero(walk_ok)[0], np.nonzero(drive_ok)[0]
-    walk_tree = cKDTree(np.column_stack([walk_x[walk_ids], walk_y[walk_ids]]))
-    drive_tree = cKDTree(np.column_stack([drive_x[drive_ids], drive_y[drive_ids]]))
     arrays, meta = {}, {}
     for name, res in config.RESOLUTIONS.items():
         nx, ny = math.ceil((maxx - minx) / res), math.ceil((maxy - miny) / res)
@@ -104,16 +111,16 @@ def build_grids(land, walk_x, walk_y, walk_ok, drive_x, drive_y, drive_ok) -> tu
         cx = minx + (col.ravel() + 0.5) * res
         cy = maxy - (row.ravel() + 0.5) * res  # row 0 is the northern edge (image order)
         cell = np.nonzero(shapely.contains_xy(land, cx, cy))[0]
-        wd, wi = walk_tree.query(np.column_stack([cx[cell], cy[cell]]), k=config.GRID_SNAP_K)
-        keep = wd[:, 0] <= config.GRID_MAX_SNAP_M
-        cell, wd, wi = cell[keep], wd[keep], wi[keep]
-        dd, di = drive_tree.query(np.column_stack([cx[cell], cy[cell]]), k=config.GRID_SNAP_K)
+        wn, wm, *_ = barriers.snap(barrier, cx[cell], cy[cell], walk_targets, step=False)
+        keep = np.isfinite(wm).any(axis=1)
+        cell, wn, wm = cell[keep], wn[keep], wm[keep]
+        dn, dm, *_ = barriers.snap(barrier, cx[cell], cy[cell], drive_targets, step=False)
         arrays |= {
             f"{name}_cell": cell.astype(np.int32),
-            f"{name}_walk_node": walk_ids[wi].astype(np.int32),
-            f"{name}_walk_m": (wd * config.STRAIGHT_LINE_DETOUR).astype(np.float32),
-            f"{name}_drive_node": drive_ids[di].astype(np.int32),
-            f"{name}_drive_m": (dd * config.STRAIGHT_LINE_DETOUR).astype(np.float32),
+            f"{name}_walk_node": wn.astype(np.int32),
+            f"{name}_walk_m": wm.astype(np.float32),
+            f"{name}_drive_node": dn.astype(np.int32),
+            f"{name}_drive_m": dm.astype(np.float32),
         }
         west, north = geo.to_lonlat(minx, maxy)
         east, south = geo.to_lonlat(minx + nx * res, maxy - ny * res)
@@ -192,11 +199,14 @@ def build(day: date | None = None) -> None:
     _log(t0, f"{len(vu) // 2} void-deck links from {n_blocks} HDB footprints; "
              f"{walk_major.sum()} routable walk nodes, {drive_major.sum()} drive nodes")
 
+    barrier = barriers.Barriers.load()
+    _log(t0, "barrier grid: " + ("data/raw/barriers, so straight walks don't cross barriers" if barrier else
+                                 "none (isochrone fetch --only barriers); straight walks ignore barriers"))
     walk_ids = np.nonzero(walk_major)[0]
-    walk_tree = cKDTree(np.column_stack([walk.x[walk_ids], walk.y[walk_ids]]))
+    walk_pool = barriers.Pool(walk_ids, walk.x[walk_ids], walk.y[walk_ids])
 
     def usable_stop(x, y):
-        d, _ = walk_tree.query(np.column_stack([x, y]))
+        d, _ = walk_pool.tree.query(np.column_stack([x, y]))
         return shapely.contains_xy(on_land, x, y) & (d <= STOP_SNAP_M)
 
     bus = transit.build_bus(usable_stop)
@@ -204,13 +214,25 @@ def build(day: date | None = None) -> None:
     rail = transit.build_rail(day)
     _log(t0, f"rail: " + json.dumps({k: v for k, v in rail.stats.items() if k != 'active_services'}))
 
-    stop_item, stop_node, stop_m = _snap(walk_tree, walk_ids, bus.stop_x, bus.stop_y, 2, STOP_SNAP_M)
-    ent_item, ent_node, ent_m = _snap(walk_tree, walk_ids, rail.entrance_x, rail.entrance_y, 2, ENTRANCE_SNAP_M)
+    stop_item, stop_node, stop_m = _snap(barrier, walk_pool, bus.stop_x, bus.stop_y, 2, STOP_SNAP_M)
+    ent_item, ent_node, ent_m = _snap(barrier, walk_pool, rail.entrance_x, rail.entrance_y, 2, ENTRANCE_SNAP_M)
     missing = set(range(len(rail.entrance_id))) - set(ent_item.tolist())
     if missing:
         _log(t0, f"warning: {len(missing)} station entrances are not near a footpath")
 
-    grid_arrays, grid_meta = build_grids(land, walk.x, walk.y, walk_major, drive.x, drive.y, drive_major)
+    # Map cells also join their nearest bus stop and station exit directly, so the walk from a
+    # block to an exit beside it doesn't depend on OpenStreetMap having the path. The ids
+    # follow the engine's transit-graph layout: walk nodes, stops, on-bus nodes, entrances.
+    o_stop, o_ent = walk.n, walk.n + len(bus.stop_x) + len(bus.ride_pattern)
+    stop_pool = barriers.Pool(o_stop + np.arange(len(bus.stop_x)), bus.stop_x, bus.stop_y)
+    exit_pool = barriers.Pool(o_ent + np.arange(len(rail.entrance_x)), rail.entrance_x, rail.entrance_y)
+    drive_ids = np.nonzero(drive_major)[0]
+    drive_pool = barriers.Pool(drive_ids, drive.x[drive_ids], drive.y[drive_ids])
+    grid_arrays, grid_meta = build_grids(
+        land, barrier,
+        [(walk_pool, config.GRID_SNAP_K, config.GRID_MAX_SNAP_M), (exit_pool, 1, config.ACCESS_SNAP_M),
+         (stop_pool, 1, config.ACCESS_SNAP_M)],
+        [(drive_pool, config.GRID_SNAP_K, DRIVE_SNAP_M)])
     _log(t0, "grids: " + ", ".join(f"{k} {v['res_m']} m = {v['cells']} cells" for k, v in grid_meta.items()))
 
     np.savez_compressed(config.BUILD / "walk.npz", x=walk.x.astype(np.float32), y=walk.y.astype(np.float32),
@@ -235,8 +257,11 @@ def build(day: date | None = None) -> None:
 
     sources = json.loads((config.RAW / "sources.json").read_text(encoding="utf-8"))
     meta = {
+        "format": config.BUILD_FORMAT,
         "built_at": datetime.now().isoformat(timespec="seconds"),
         "service_date": day.isoformat(),
+        "snap": {"barriers": barrier is not None, "access_m": config.ACCESS_SNAP_M,
+                 "node_offsets": {"stop": int(o_stop), "entrance": int(o_ent)}},
         "sources": sources,
         "grids": grid_meta,
         "names": {"bus_stop": bus.stop_code, "bus_stop_name": bus.stop_name, "bus_pattern": bus.pattern_name,
