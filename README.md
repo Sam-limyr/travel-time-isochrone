@@ -101,7 +101,7 @@ about 0.5 GB of RAM while building (the server uses about 0.25 GB).
   **Right-click** a spot (or use *Trips* in the landmarks table) to see its trip to each
   place, with legs, and their weighted average.
 
-  ![The average trip time from everywhere to places in Jurong East, Punggol and Tampines, weighted 2, 1 and 2](docs/screenshots/2-several-places.jpg)
+  ![The average trip time from everywhere to places in Jurong East, Punggol and Tampines, weighted 2, 1 and 2, and a right-click at Newton showing its trips to each](docs/screenshots/2-several-places.jpg)
 - **To a profile**: pick a profile of key destinations, such as an office job in the CBD
   or frequent trips to JB (below). The heatmap shows, for every spot, the weighted
   average trip time to the profile's places: its key-destinations score if you lived

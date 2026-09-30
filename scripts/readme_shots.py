@@ -32,10 +32,11 @@ def main():
         # 1: from Raffles Place by public transport
         p.open("dir=from&o=1.28400,103.85150&mode=transit&band=am_peak&max=50&bw=10&kp=general")
         shoot(p, "1-from-one-point.jpg")
-        # 2: to Jurong East, Punggol Coast and Tampines, weighted 2 : 1 : 2
-        p.open("dir=to&pl=1.33400,103.74700,2,;1.41700,103.90980,1,;1.35170,103.94920,2,"
+        # 2: to Jurong East, Punggol Coast and Tampines, weighted 2 : 1 : 2, with the trips from
+        # Newton drawn (as a right-click there does)
+        p.open("dir=to&pl=1.33400,103.74700,2,;1.41700,103.90980,1,;1.35170,103.94920,2,&t=1.31291,103.83801"
                "&mode=transit&band=am_peak&max=60&bw=10&kp=general")
-        p.wait("placeParts.length === 3")
+        p.wait("placeParts.length === 3 && !!lastTrips && !document.querySelector('#route-section').hidden")
         p.settle()
         shoot(p, "2-several-places.jpg")
         # 3: to a profile, with the pin at Springleaf and the pointer on it
