@@ -22,9 +22,10 @@
     <div id="panel-body">
       <section>
         <h2>Map shows</h2>
-        <div class="seg" role="radiogroup" aria-label="What the map shows" data-name="dir">
+        <div class="seg seg-3" role="radiogroup" aria-label="What the map shows" data-name="dir">
           <label title="Travel time from one starting point to everywhere"><input type="radio" name="dir" value="from" checked><span>From one point</span></label>
           <label title="Average travel time from everywhere to up to five places"><input type="radio" name="dir" value="to"><span>To several places</span></label>
+          <label title="Weighted average travel time from everywhere to a profile's key destinations"><input type="radio" name="dir" value="profile"><span>To a profile</span></label>
         </div>
       </section>
 
@@ -37,6 +38,33 @@
         <p class="note" id="my-places-weights" hidden>Weights set how much each place counts; trips per week work well
           (work 5, gym 2). The percentage is each place's share of the average. Drag a pin to move it.</p>
         <p class="note" id="my-places-full" hidden>That's five: remove one to add another.</p>
+      </section>
+
+      <!-- "To a profile": the profile's weights, and the pin's trip to each of its places -->
+      <section class="profile-only" id="key-section" hidden>
+        <h2>Key destinations</h2>
+        <div class="key-profile">
+          <label for="key-profile">Profile</label>
+          <select id="key-profile"></select>
+        </div>
+        <p class="note" id="key-profile-desc"></p>
+        <p class="key-total"><strong id="key-total"></strong><small id="key-total-note"></small></p>
+        <table class="data" id="key-groups">
+          <thead><tr><th scope="col">Group</th><th scope="col" class="num">Weight</th><th scope="col" class="num">Minutes</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <details class="key-list">
+          <summary id="key-count">All destinations</summary>
+          <table class="data" id="key-items">
+            <thead><tr><th scope="col">Place</th><th scope="col" class="num">Weight</th><th scope="col" class="num">Minutes</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </details>
+        <p class="note" id="key-unreached" hidden></p>
+        <p class="note" id="key-skipped" hidden></p>
+        <p class="note"><i>General</i> is the sample list of the <i>the-fastest-journey</i> project, unchanged;
+          the other profiles are illustrations. Edit <code>data/manual/key_destinations.toml</code> to change
+          them or add your own.</p>
       </section>
 
       <!-- a right-click's result sits near the top, where it is seen, with a clear way out -->
@@ -131,31 +159,6 @@
         </div>
       </section>
 
-      <section id="key-section" hidden>
-        <h2>Key destinations</h2>
-        <div class="key-profile">
-          <label for="key-profile">Profile</label>
-          <select id="key-profile"></select>
-        </div>
-        <p class="note" id="key-profile-desc"></p>
-        <p class="key-total"><strong id="key-total"></strong><small>weighted average from the start point</small></p>
-        <table class="data" id="key-groups">
-          <thead><tr><th scope="col">Group</th><th scope="col" class="num">Weight</th><th scope="col" class="num">Minutes</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <details class="key-list">
-          <summary id="key-count">All destinations</summary>
-          <table class="data" id="key-items">
-            <thead><tr><th scope="col">Place</th><th scope="col" class="num">Weight</th><th scope="col" class="num">Minutes</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </details>
-        <p class="note" id="key-unreached" hidden></p>
-        <p class="note" id="key-skipped" hidden></p>
-        <p class="note"><i>General</i> is the sample list of the <i>the-fastest-journey</i> project, unchanged;
-          the other profiles are illustrations. Edit <code>data/manual/key_destinations.toml</code> to change
-          them or add your own.</p>
-      </section>
 
       <section>
         <h2 id="area-title">Reachable area</h2>

@@ -127,6 +127,20 @@ def test_key_destination_profiles_favour_their_places(engine):
     assert score(103.7650, 1.3150, "student") < score(*RAFFLES, "student")  # Clementi: NUS and the polys
 
 
+def test_profile_map_is_the_key_destinations_score_everywhere(engine):
+    from isochrone.engine import Request
+    anywhere = Request(lon=0, lat=0, res="high")  # a profile map has no start point
+    pm = engine.profile_isochrone(anywhere, "cbd")
+    assert pm["places"] == len(next(p for p in engine.key_profiles if p["key"] == "cbd")["place_weights"])
+    for lon, lat in (RAFFLES, PLACES["bishan"], PLACES["woodlands"]):
+        score = engine.key_destinations_at(Request(lon=lon, lat=lat))["cbd"]["weighted_min"]
+        assert minutes_at(pm, lon, lat) == pytest.approx(score, abs=1.0)
+    again = engine.profile_isochrone(anywhere, "cbd")
+    assert again["timing_ms"]["cached"] and again["grid"]["data"] == pm["grid"]["data"]
+    with pytest.raises(ValueError):
+        engine.profile_isochrone(anywhere, "astronaut")
+
+
 def test_times_to_a_place_match_the_router(engine):
     from isochrone.engine import Request
     to = engine.isochrone(Request(lon=RAFFLES[0], lat=RAFFLES[1], direction="to", res="high"))
@@ -146,6 +160,7 @@ def test_overlapping_queries_are_safe():
     with ThreadPoolExecutor(6) as pool:
         futures = [pool.submit(fresh.isochrone, Request(lon=lon, lat=lat, direction="to")) for lon, lat in PLACES.values()]
         futures += [pool.submit(fresh.route, Request(lon=RAFFLES[0], lat=RAFFLES[1]), lon, lat) for lon, lat in PLACES.values()]
+        futures += [pool.submit(fresh.profile_isochrone, Request(lon=0, lat=0, res="low"), key) for key in ("cbd", "jb")]
         assert all(f.result() for f in futures)
 
 

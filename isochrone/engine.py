@@ -22,7 +22,7 @@ import threading
 import time
 import tomllib
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import shapely
@@ -38,6 +38,8 @@ ORIGIN_K = 4        # the clicked point connects to this many nearby network nod
 ORIGIN_MAX_M = 1000.0
 LAND_MARGIN_M = 150.0  # points this far off the URA coastline still count as land (piers, new reclamation)
 CACHE_SIZE = 12     # recent searches kept (~4.5 MB each): up to five places plus the start point
+PLACE_CACHE_BYTES = 96 * 2**20  # profile maps: each place's times on a grid, kept per setting
+PROFILE_CACHE_SIZE = 16         # finished profile maps kept
 NO_DATA, UNREACHED = 65535, 65534  # grid encoding; other values are tenths of a minute
 
 # edge kinds in the public-transport graph
@@ -92,8 +94,8 @@ class _Csr:
         self.n_edges = len(u)
 
     def run(self, weights: np.ndarray, origin_nodes: np.ndarray, origin_s: np.ndarray,
-            limit: float) -> tuple[np.ndarray, np.ndarray]:
-        """Shortest times and predecessors from the origin.
+            limit: float, predecessors: bool = True):
+        """Shortest times (and predecessors, unless not wanted) from the origin.
 
         ``weights`` are per edge in sorted order, excluding the origin slots.
         """
@@ -105,7 +107,7 @@ class _Csr:
         indices[-ORIGIN_K:][:m] = origin_nodes
         data[-ORIGIN_K:][:m] = np.maximum(origin_s, EPS)
         graph = csr_matrix((data, indices, self.indptr), shape=(self.n, self.n))
-        return dijkstra(graph, directed=True, indices=self.origin, limit=limit, return_predecessors=True)
+        return dijkstra(graph, directed=True, indices=self.origin, limit=limit, return_predecessors=predecessors)
 
 
 def _transposed(u: np.ndarray, v: np.ndarray, n_nodes: int, fwd: _Csr) -> tuple[_Csr, np.ndarray]:
@@ -116,6 +118,12 @@ def _transposed(u: np.ndarray, v: np.ndarray, n_nodes: int, fwd: _Csr) -> tuple[
     pos = np.empty(m, np.int64)
     pos[fwd.order[fwd.order < m]] = np.arange(m)  # original edge -> slot in the forward order
     return rev, pos[rev.order[rev.order < m]].astype(np.int32)
+
+
+def _tenths(seconds: np.ndarray) -> np.ndarray:
+    """Seconds in the grid encoding: tenths of a minute, UNREACHED beyond the routing cut-off."""
+    limit = config.MAX_MINUTES * 60
+    return np.where(seconds <= limit, np.round(seconds / 6).clip(0, UNREACHED - 1), UNREACHED).astype(np.uint16)
 
 
 def _serialised(method):
@@ -157,6 +165,11 @@ class Engine:
         self._build_drive(drive)
         self._cache: OrderedDict = OrderedDict()
         self._lock = threading.Lock()
+        # profile maps run outside self._lock (their searches take seconds), under their own lock
+        self._profile_lock = threading.Lock()
+        self._place_cache: OrderedDict = OrderedDict()
+        self._place_cache_bytes = 0
+        self._profile_cache: OrderedDict = OrderedDict()
         for name in ("stop_x", "stop_y", "entrance_x", "entrance_y", "platform_x", "platform_y"):
             setattr(self, name, tr[name].astype(np.float64))
         self.ride_stop, self.ride_pattern = tr["ride_stop"], tr["ride_pattern"]
@@ -226,9 +239,12 @@ class Engine:
                     if pid == len(self.key_places):
                         self.key_places.append({"name": name, "lon": lon, "lat": lat})
                     items.append({"group": group, "name": name, "weight": weight, "place": pid})
+            place_weights: dict[int, float] = {}  # a place in several groups counts once, with their weights added
+            for i in items:
+                place_weights[i["place"]] = place_weights.get(i["place"], 0.0) + i["weight"]
             self.key_profiles.append({"key": key, "name": profile.get("name", key),
                                       "description": profile.get("description", ""), "items": items,
-                                      "skipped": skipped})
+                                      "place_weights": list(place_weights.items()), "skipped": skipped})
         if self.key_places:
             pts = np.column_stack(geo.to_xy([p["lon"] for p in self.key_places], [p["lat"] for p in self.key_places]))
             self.key_xy = pts
@@ -403,6 +419,14 @@ class Engine:
 
     # --- queries ----------------------------------------------------------------
 
+    def _graph_and_weights(self, req: Request, forward: bool) -> tuple[_Csr, np.ndarray]:
+        """The graph a search runs over (reversed for times *to* a point) and its edge weights."""
+        if req.mode == "transit":
+            w = self.transit_weights(req)
+            return (self.t_graph, w) if forward else (self.t_graph_rev, w[self.t_rev_perm])
+        w = self.drive_weights(req)
+        return (self.d_graph, w) if forward else (self.d_graph_rev, w[self.d_rev_perm])
+
     def _search(self, req: Request) -> tuple[np.ndarray, np.ndarray, float, float, dict]:
         """Dijkstra from the request's point, or for direction "to", towards it over the
         reversed graph (each node's time to reach the point). Cached: switching resolution,
@@ -417,17 +441,8 @@ class Engine:
             return dist, pred, x, y, {"cached": True, "snap_m": snap_m}
         t0 = time.perf_counter()
         v = req.walk_kmh / 3.6
-        forward = req.direction == "from"
-        if req.mode == "transit":
-            tree, ids = self.walk_tree, self.walk_ids
-            weights = self.transit_weights(req)
-            graph, perm = (self.t_graph, None) if forward else (self.t_graph_rev, self.t_rev_perm)
-        else:
-            tree, ids = self.drive_tree, self.drive_ids
-            weights = self.drive_weights(req)
-            graph, perm = (self.d_graph, None) if forward else (self.d_graph_rev, self.d_rev_perm)
-        if perm is not None:
-            weights = weights[perm]
+        graph, weights = self._graph_and_weights(req, forward=req.direction == "from")
+        tree, ids = (self.walk_tree, self.walk_ids) if req.mode == "transit" else (self.drive_tree, self.drive_ids)
         d, i = tree.query([x, y], k=ORIGIN_K)
         if d[0] > ORIGIN_MAX_M:
             raise ValueError("That point is too far from any footpath or road in Singapore.")
@@ -463,18 +478,13 @@ class Engine:
         t1 = time.perf_counter()
         cell_s, cells = self._cell_times(req, dist, x, y)
         g = self.meta["grids"][req.res]
-        limit = config.MAX_MINUTES * 60
         grid = np.full(g["nx"] * g["ny"], NO_DATA, np.uint16)
-        grid[cells] = np.where(cell_s <= limit, np.round(cell_s / 6).clip(0, UNREACHED - 1),
-                               UNREACHED).astype(np.uint16)
+        grid[cells] = _tenths(cell_s)
         t2 = time.perf_counter()
         cell_km2 = (g["res_m"] / 1000) ** 2
         minutes = cell_s / 60
         return {
-            "grid": {"nx": g["nx"], "ny": g["ny"], "res_m": g["res_m"], "bounds": g["bounds"],
-                     "land_cells": self.land_cells[req.res],
-                     "encoding": "uint16 little-endian, tenths of a minute; 65535 = no data, 65534 = unreachable",
-                     "data": base64.b64encode(grid.astype("<u2").tobytes()).decode("ascii")},
+            "grid": self._grid_payload(req.res, grid),
             "origin": {"lon": req.lon, "lat": req.lat, "snap_m": round(info["snap_m"], 1)},
             "direction": req.direction,
             "area_km2": {str(m): round(float((minutes <= m).sum() * cell_km2), 1) for m in (15, 30, 45, 60, 90)},
@@ -482,6 +492,91 @@ class Engine:
             "timing_ms": {"search": round((t1 - t0) * 1000), "grid": round((t2 - t1) * 1000),
                           "cached": info["cached"]},
         }
+
+    def _grid_payload(self, res: str, grid: np.ndarray) -> dict:
+        g = self.meta["grids"][res]
+        return {"nx": g["nx"], "ny": g["ny"], "res_m": g["res_m"], "bounds": g["bounds"],
+                "land_cells": self.land_cells[res],
+                "encoding": "uint16 little-endian, tenths of a minute; 65535 = no data, 65534 = unreachable",
+                "data": base64.b64encode(grid.astype("<u2").tobytes()).decode("ascii")}
+
+    @_serialised
+    def key_destinations_at(self, req: Request) -> dict | None:
+        """Every profile's key-destination scores for a start point, without the grid."""
+        req.validate()
+        dist, _, x, y, _ = self._search(replace(req, direction="from"))
+        return self._key_destinations(req, dist, x, y)
+
+    # --- profile maps -----------------------------------------------------------
+
+    def profile_keys(self) -> list[str]:
+        return [p["key"] for p in self.key_profiles if p["items"]]
+
+    def profile_isochrone(self, req: Request, key: str) -> dict:
+        """Every land cell's weighted average travel time to the places of a key-destination
+        profile: the key-destinations score for a start point in that cell.
+
+        As in the several-places view, each place gets one search over the reversed graph,
+        sampled onto the grid; places beyond the routing cut-off count as the cut-off, as in
+        the score. A place's times are cached per setting, so switching to a profile that
+        shares places, or back, is quick. The request's point is not used. This runs outside
+        the engine lock (a new profile takes a few seconds) under its own lock, and touches
+        nothing the other queries change.
+        """
+        req.validate()
+        if key not in self.profile_keys():
+            raise ValueError(f"profile must be one of {self.profile_keys()}")
+        profile = next(p for p in self.key_profiles if p["key"] == key)
+        setting = (req.mode, req.band, req.wait, req.walk_kmh, req.bus, req.rail, req.voiddeck, req.parking_min,
+                   req.res)
+        with self._profile_lock:
+            if (key, setting) in self._profile_cache:
+                self._profile_cache.move_to_end((key, setting))
+                return self._profile_cache[(key, setting)] | {"timing_ms": {"search": 0, "grid": 0, "cached": True}}
+            t0 = time.perf_counter()
+            cells = self.grids[f"{req.res}_cell"]
+            cap = config.MAX_MINUTES * 10  # tenths of a minute: an unreachable place counts as the cut-off
+            total, reached = np.zeros(len(cells)), np.zeros(len(cells), bool)
+            weights, searched = None, 0
+            for place, w in profile["place_weights"]:
+                times = self._place_cache.get((place, setting))
+                if times is None:
+                    if weights is None:  # one set of weights serves every place
+                        weights = self._graph_and_weights(req, forward=False)
+                    times = self._times_to_place(req, place, *weights)
+                    self._keep_place_times((place, setting), times)
+                    searched += 1
+                else:
+                    self._place_cache.move_to_end((place, setting))
+                ok = times < UNREACHED
+                reached |= ok
+                total += w * np.where(ok, times, cap)
+            average = total / sum(w for _, w in profile["place_weights"])
+            g = self.meta["grids"][req.res]
+            grid = np.full(g["nx"] * g["ny"], NO_DATA, np.uint16)
+            grid[cells] = np.where(reached, np.round(average).clip(0, UNREACHED - 1), UNREACHED).astype(np.uint16)
+            result = {"grid": self._grid_payload(req.res, grid), "profile": key,
+                      "places": len(profile["place_weights"]), "searched": searched}
+            self._profile_cache[(key, setting)] = result
+            while len(self._profile_cache) > PROFILE_CACHE_SIZE:
+                self._profile_cache.popitem(last=False)
+        return result | {"timing_ms": {"search": round((time.perf_counter() - t0) * 1000), "grid": 0, "cached": False}}
+
+    def _times_to_place(self, req: Request, place: int, graph: _Csr, weights: np.ndarray) -> np.ndarray:
+        """Tenths of a minute from every land cell of the requested grid to key place ``place``
+        (UNREACHED beyond the cut-off): one search over the reversed graph."""
+        v = req.walk_kmh / 3.6
+        nodes, metres = self.key_snap[req.mode]
+        dist = graph.run(weights, nodes[place], metres[place] / v, config.MAX_MINUTES * 60, predecessors=False)
+        cell_s, _ = self._cell_times(req, dist, *self.key_xy[place])
+        return _tenths(cell_s)
+
+    def _keep_place_times(self, key: tuple, times: np.ndarray) -> None:
+        self._place_cache[key] = times
+        self._place_cache_bytes += times.nbytes
+        while self._place_cache_bytes > PLACE_CACHE_BYTES and len(self._place_cache) > 1:
+            _, old = self._place_cache.popitem(last=False)
+            self._place_cache_bytes -= old.nbytes
 
     # --- itineraries ------------------------------------------------------------
 

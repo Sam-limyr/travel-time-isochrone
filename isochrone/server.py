@@ -55,9 +55,13 @@ def meta() -> dict:
         "parking_min": list(config.PARKING_OPTIONS_MIN),
         "max_minutes": config.MAX_MINUTES,
         "places": [{"name": n, "lon": lon, "lat": lat} for n, lon, lat in config.PLACES],
-        "key_destinations": [{"key": p["key"], "name": p["name"], "description": p["description"],
-                              "count": len(p["items"]), "skipped": p["skipped"]}
-                             for p in engine.key_profiles if p["items"]],
+        "key_destinations": [
+            {"key": p["key"], "name": p["name"], "description": p["description"], "skipped": p["skipped"],
+             "places": len(p["place_weights"]),
+             "items": [{"group": i["group"], "name": i["name"], "weight": i["weight"],
+                        "lon": engine.key_places[i["place"]]["lon"], "lat": engine.key_places[i["place"]]["lat"]}
+                       for i in p["items"]]}
+            for p in engine.key_profiles if p["items"]],
         "train_frequencies": _train_frequencies(),
         "station_access": {"s_per_m": config.STATION_ACCESS_S_PER_M,
                            "rows": [{"label": r["label"], "depth_m": r["depth_m"], "seconds": round(r["seconds"])}
@@ -76,6 +80,30 @@ def isochrone(lat: float, lon: float, mode: str = "transit", band: str = "am_pea
     try:
         return engine.isochrone(_request(lat, lon, mode, band, wait, walk_kmh, res, bus, rail, voiddeck, parking,
                                          direction))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/profile")
+def profile(profile: str, mode: str = "transit", band: str = "am_peak", wait: str = "avg",
+            walk_kmh: float = config.WALK_KMH_DEFAULT, res: str = "med", bus: bool = True, rail: bool = True,
+            voiddeck: bool = True, parking: float = 0) -> dict:
+    """Weighted average travel time from everywhere to a key-destination profile's places."""
+    try:
+        return engine.profile_isochrone(_request(0.0, 0.0, mode, band, wait, walk_kmh, res, bus, rail, voiddeck,
+                                                 parking), profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/key_destinations")
+def key_destinations(lat: float, lon: float, mode: str = "transit", band: str = "am_peak", wait: str = "avg",
+                     walk_kmh: float = config.WALK_KMH_DEFAULT, bus: bool = True, rail: bool = True,
+                     voiddeck: bool = True, parking: float = 0) -> dict:
+    """Every profile's key-destination scores for a start point (no grid)."""
+    try:
+        return {"key_destinations": engine.key_destinations_at(
+            _request(lat, lon, mode, band, wait, walk_kmh, "med", bus, rail, voiddeck, parking))}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

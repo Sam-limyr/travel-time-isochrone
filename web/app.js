@@ -35,7 +35,9 @@ const el = (tag, props = {}, ...children) => {
 };
 
 const state = {
-  dir: "from",  // "from" one start point, or "to" several places (their weighted average)
+  // "from" one start point; "to" several places (their weighted average); or "profile":
+  // to a key-destination profile's places, with state.origin as the pin whose trips are listed
+  dir: "from",
   origin: null, dest: null,
   places: [],   // [{ lat, lon, w, label }], up to MAX_PLACES
   tripFrom: null,  // spot whose trips to the places are shown
@@ -53,6 +55,8 @@ let reqSeq = 0, routeSeq = 0, busyTimer = null;
 let originMarker = null, destMarker = null, tripMarker = null, lastGoodOrigin = null;
 let placeMarkers = [], placeParts = [];  // per place: its map pin, and its fetched grid
 const placeGrids = new Map();            // per place and settings: promise of its grid
+const profileGrids = new Map();          // per profile and settings: promise of its map
+let spotScores = null, spotScoresKey = null;  // every profile's key-destination scores for state.origin
 let lineColours = {};
 const loadedOverlays = new Set();
 
@@ -114,7 +118,7 @@ function readHash() {
   state.places = parsePlaces(p.get("pl") || "");
   state.tripFrom = pt(p.get("t"));
   const pick = (k, allowed) => (allowed.includes(p.get(k)) ? p.get(k) : null);
-  state.dir = pick("dir", ["from", "to"]) || state.dir;
+  state.dir = pick("dir", ["from", "to", "profile"]) || state.dir;
   state.mode = pick("mode", ["transit", "car"]) || state.mode;
   state.band = pick("band", meta.bands.map((b) => b.key)) || state.band;
   state.wait = pick("wait", meta.wait_modes) || state.wait;
@@ -219,7 +223,7 @@ function buildControls() {
   document.querySelectorAll('input[type="radio"]').forEach((input) => input.addEventListener("change", () => {
     const { name, value } = input;
     if (name === "parking" || name === "bandSize") state[name] = Number(value); else state[name] = value;
-    if (name === "dir") applyDir();
+    if (name === "dir") { applyDir(); clearResult(); }  // no stale map of another view while the new one loads
     syncControlVisibility();
     if (["style", "bandSize", "palette"].includes(name)) redraw(); else recompute();
   }));
@@ -251,7 +255,11 @@ function buildControls() {
     if (e.key === "Escape" && !$("#route-section").hidden && !typing) clearRoute();
   });
   $("#key-score").addEventListener("click", showKeySection);
-  profiles.addEventListener("change", () => { state.profile = profiles.value; writeHash(); renderKeyDestinations(); });
+  profiles.addEventListener("change", () => {
+    state.profile = profiles.value;
+    writeHash(); syncProfilePlaces(); renderLegend();
+    if (state.dir === "profile") compute(); else renderKeyDestinations();
+  });
   $("#my-places-example").addEventListener("click", loadExample);
   $("#panel-toggle").addEventListener("click", () => {
     const panel = $("#panel");
@@ -266,16 +274,19 @@ function buildControls() {
 }
 
 function syncControlVisibility() {
-  const transit = state.mode === "transit", to = state.dir === "to";
+  const transit = state.mode === "transit", to = state.dir === "to", profile = state.dir === "profile";
   document.querySelectorAll(".transit-only").forEach((n) => (n.hidden = !transit));
   document.querySelectorAll(".car-only").forEach((n) => (n.hidden = transit));
   document.querySelectorAll(".to-only").forEach((n) => (n.hidden = !to));
+  document.querySelectorAll(".profile-only").forEach((n) => (n.hidden = !profile));
   $("#route-section").hidden = to ? !(state.tripFrom && lastTrips && state.places.length) : !lastRoute;
   $("#hint").textContent = to
     ? `Click the map to add up to ${MAX_PLACES} places; it shows the average trip time from everywhere to them. Right-click (Ctrl-click on a Mac) a spot for its trips.`
-    : "Click the map to set a starting point. Right-click (Ctrl-click on a Mac) for the route to a point.";
-  $("#area-title").textContent = to ? "Area by average trip time" : "Reachable area";
-  $("#landmarks-title").textContent = to ? "Average trip time from landmarks" : "Travel time to places";
+    : profile
+      ? "The map shows the weighted average trip time from everywhere to a profile's key destinations. Click a spot for its trips; right-click for a route."
+      : "Click the map to set a starting point. Right-click (Ctrl-click on a Mac) for the route to a point.";
+  $("#area-title").textContent = to || profile ? "Area by average trip time" : "Reachable area";
+  $("#landmarks-title").textContent = to || profile ? "Average trip time from landmarks" : "Travel time to places";
   $("#bandsize-row").hidden = state.style !== "bands";
   $("#band-note").hidden = state.style !== "bands";
   updateBandNote();
@@ -363,8 +374,7 @@ function initMap() {
   });
   map.on("click", (e) => {
     if (state.dir === "to") { addPlace(e.lngLat); return; }
-    state.origin = { lon: e.lngLat.lng, lat: e.lngLat.lat };
-    setOriginMarker(); writeHash(); compute();
+    moveOrigin({ lon: e.lngLat.lng, lat: e.lngLat.lat });
   });
   map.on("contextmenu", (e) => {
     e.originalEvent.preventDefault();
@@ -416,6 +426,11 @@ function addLayers() {
   map.addLayer({ id: "bus-stops", type: "circle", source: "bus-stops", minzoom: 14.5,
     paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 14.5, 2, 17, 4], "circle-stroke-width": 1 } });
 
+  // "To a profile": its places, sized by their share of its weight
+  map.addSource("profile-places", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  map.addLayer({ id: "profile-places", type: "circle", source: "profile-places", layout: { visibility: "none" },
+    paint: { "circle-radius": ["get", "r"], "circle-stroke-width": 2 } });
+
   map.addSource("hover-cell", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   map.addLayer({ id: "hover-cell", type: "line", source: "hover-cell", paint: { "line-width": 1.5 } });
 }
@@ -445,6 +460,8 @@ function applyTheme() {
   map.setPaintProperty("bus-stops", "circle-color", muted);
   map.setPaintProperty("bus-stops", "circle-stroke-color", surface);
   map.setPaintProperty("hover-cell", "line-color", ink);
+  map.setPaintProperty("profile-places", "circle-color", ink);
+  map.setPaintProperty("profile-places", "circle-stroke-color", surface);
   if (lastRoute) drawRoute(lastRoute);
   render(); renderLegend();
 }
@@ -475,14 +492,24 @@ async function applyOverlays() {
 
 function setOriginMarker() {
   if (!originMarker) {
-    originMarker = new maplibregl.Marker({ element: el("div", { className: "pin origin", title: "Start (drag to move)" }), draggable: true })
+    originMarker = new maplibregl.Marker({ element: el("div", { className: "pin origin" }), draggable: true })
       .setLngLat([state.origin.lon, state.origin.lat]).addTo(map);
     originMarker.on("dragend", () => {
       const p = originMarker.getLngLat();
-      state.origin = { lon: p.lng, lat: p.lat }; writeHash(); compute();
+      moveOrigin({ lon: p.lng, lat: p.lat });
     });
   }
   originMarker.setLngLat([state.origin.lon, state.origin.lat]);
+  originMarker.getElement().title = state.dir === "profile" ? "Your spot: its trips are listed (drag to move)" : "Start (drag to move)";
+}
+
+/** A new start point, or in the profile view a new spot: its own trips, the map stays. */
+function moveOrigin(p) {
+  state.origin = p;
+  setOriginMarker(); writeHash();
+  if (state.dir !== "profile") { compute(); return; }  // computeFrom redraws the route once it has searched
+  fetchSpotScores();
+  if (state.dest) fetchRoute();
 }
 
 function setDestMarker() {
@@ -499,18 +526,19 @@ function setDestMarker() {
 
 /* --- isochrone -------------------------------------------------------------- */
 
-function apiParams(point, extra = {}) {
+function settingsParams(extra = {}) {
   return new URLSearchParams({
-    lat: point.lat, lon: point.lon, mode: state.mode, band: state.band, wait: state.wait,
-    walk_kmh: state.walk, res: state.res, bus: state.bus, rail: state.rail, voiddeck: state.voiddeck,
-    parking: state.parking, ...extra,
+    mode: state.mode, band: state.band, wait: state.wait, walk_kmh: state.walk, res: state.res,
+    bus: state.bus, rail: state.rail, voiddeck: state.voiddeck, parking: state.parking, ...extra,
   });
 }
 
+const apiParams = (point, extra = {}) => settingsParams({ lat: point.lat, lon: point.lon, ...extra });
+
 // dim the heatmap and say so if a result takes more than a moment
-function startBusy(seq) {
+function startBusy(seq, message = "Computing travel times…") {
   clearTimeout(busyTimer);
-  busyTimer = setTimeout(() => { if (seq === reqSeq) { applyHeatOpacity(true); showStatus("Computing travel times…"); } }, 150);
+  busyTimer = setTimeout(() => { if (seq === reqSeq) { applyHeatOpacity(true); showStatus(message); } }, 150);
 }
 
 function endBusy(seq) {
@@ -518,7 +546,9 @@ function endBusy(seq) {
 }
 
 function compute() {
-  return state.dir === "to" ? computePlaces() : computeFrom();
+  if (state.dir === "to") return computePlaces();
+  if (state.dir === "profile") return computeProfile();
+  return computeFrom();
 }
 
 function clearResult() {
@@ -538,6 +568,7 @@ async function computeFrom() {
     if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
     lastResult = body;
     lastGoodOrigin = { ...state.origin };
+    spotScores = body.key_destinations; spotScoresKey = spotKey();
     grid = decodeGrid(body.grid);
     showStatus("");
     render(); renderLegend(); updateTables(); renderKeyDestinations();
@@ -553,6 +584,103 @@ async function computeFrom() {
   } finally {
     endBusy(seq);
   }
+}
+
+/* --- to a profile: the weighted average time to its key destinations -------- */
+
+const currentProfile = () => meta.key_destinations.find((q) => q.key === state.profile);
+
+/** Promise of a profile's map (cached per profile and settings). The server searches once per
+    place, so a profile's first map takes a few seconds; places shared with others are reused. */
+function profileGrid(key) {
+  const k = `${key}|${settingsKey()}`;
+  if (!profileGrids.has(k)) {
+    const promise = fetch(`/api/profile?${settingsParams({ profile: key })}`).then(async (res) => {
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail || `HTTP ${res.status}`);
+      return decodeGrid(body.grid);
+    });
+    promise.catch(() => profileGrids.delete(k));
+    profileGrids.set(k, promise);
+    while (profileGrids.size > 16) profileGrids.delete(profileGrids.keys().next().value);
+  }
+  return profileGrids.get(k);
+}
+
+async function computeProfile() {
+  const profile = map && currentProfile();
+  if (!profile) return;
+  const seq = ++reqSeq;
+  startBusy(seq, `Computing trip times to the ${profile.places} places of “${profile.name}”…`);
+  fetchSpotScores();  // the pin's own trips, alongside
+  try {
+    const g = await profileGrid(profile.key);
+    if (seq !== reqSeq) return;
+    grid = g;
+    lastResult = { key_destinations: null };
+    showStatus("");
+    render(); renderLegend(); updateTables(); renderKeyDestinations();
+  } catch (err) {
+    if (seq === reqSeq) showStatus(err.message, true, 6000);
+  } finally {
+    endBusy(seq);
+  }
+}
+
+// the scores are for the pin (state.origin) under the travel settings
+const spotKey = () => (state.origin ? `${state.origin.lat.toFixed(5)},${state.origin.lon.toFixed(5)}|${settingsKey()}` : null);
+let spotSeq = 0;
+
+/** Every profile's key-destination scores for the pin: one search from it, no grid. */
+async function fetchSpotScores() {
+  const key = spotKey();
+  if (!key || key === spotScoresKey) { renderKeyDestinations(); return; }
+  const seq = ++spotSeq;
+  renderKeyDestinations();  // shows the old numbers as pending
+  try {
+    const res = await fetch(`/api/key_destinations?${apiParams(state.origin)}`);
+    const body = await res.json();
+    if (seq !== spotSeq) return;
+    if (!res.ok) throw Object.assign(new Error(body.detail || `HTTP ${res.status}`), { status: res.status });
+    spotScores = body.key_destinations; spotScoresKey = key;
+    lastGoodOrigin = { ...state.origin };
+  } catch (err) {
+    if (seq !== spotSeq) return;
+    showStatus(err.message, true, 6000);
+    if (err.status === 400 && lastGoodOrigin) {  // at sea or in Johor: put the pin back
+      state.origin = { ...lastGoodOrigin };
+      setOriginMarker(); writeHash();
+    }
+  }
+  renderKeyDestinations();
+}
+
+/** The profile's places as circles on the map, sized by their share of its weight. */
+function syncProfilePlaces() {
+  if (!map || !map.getSource("profile-places")) return;
+  const profile = currentProfile(), show = state.dir === "profile" && !!profile;
+  map.setLayoutProperty("profile-places", "visibility", show ? "visible" : "none");
+  if (!profile) return;
+  const places = new Map(), total = profile.items.reduce((s, i) => s + i.weight, 0);
+  for (const i of profile.items) {
+    const k = `${i.lon},${i.lat}`, q = places.get(k) || { name: i.name, lon: i.lon, lat: i.lat, weight: 0 };
+    q.weight += i.weight;
+    places.set(k, q);
+  }
+  const top = Math.max(...[...places.values()].map((q) => q.weight));
+  map.getSource("profile-places").setData({ type: "FeatureCollection", features: [...places.values()].map((q) => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [q.lon, q.lat] },
+    properties: { name: q.name, share: +((100 * q.weight) / total).toFixed(1), r: 4 + 7 * Math.sqrt(q.weight / top) },
+  })) });
+}
+
+/** Switch the view (the "Map shows" tabs), e.g. from the legend's key-destinations score. */
+function setDir(dir) {
+  if (state.dir === dir) return;
+  state.dir = dir;
+  const input = document.querySelector(`input[name="dir"][value="${dir}"]`);
+  if (input) input.checked = true;
+  applyDir(); syncControlVisibility(); clearResult(); writeHash(); compute();
 }
 
 /* --- several places: the weighted average of travel times to each ---------- */
@@ -740,9 +868,10 @@ function loadExample() {
 /** Show the markers, route and panel sections of the current view. */
 function applyDir() {
   const to = state.dir === "to";
-  if (originMarker) originMarker.getElement().hidden = to;
+  if (originMarker) { originMarker.getElement().hidden = to; setOriginMarker(); }
   if (destMarker) destMarker.getElement().hidden = to;
   if (tripMarker) tripMarker.getElement().hidden = !to;
+  syncProfilePlaces();
   if (map && map.getSource("route")) {
     // the route layers carry this view's route, or its trips
     map.getSource("route").setData({ type: "FeatureCollection", features: [] });
@@ -831,12 +960,13 @@ function renderLegend() {
     });
     box.append(sw, axis);
   }
-  const to = state.dir === "to";
-  const caption = !to ? "Minutes from the start · " : placesWeighted() ? "Weighted average minutes to your places · " : "Average minutes to your places · ";
+  const to = state.dir === "to", profile = state.dir === "profile" && meta && currentProfile();
+  const caption = profile ? `Weighted average minutes to key destinations (${profile.name}) · `
+    : !to ? "Minutes from the start · " : placesWeighted() ? "Weighted average minutes to your places · " : "Average minutes to your places · ";
   box.append(el("div", { className: "caption" }, caption,
     el("span", { className: "nodata" }), `over ${cap}`));
   const how = state.mode === "car" ? "by car" : "by public transport";
-  $("#legend-title").textContent = meta ? `${to ? "Average trip time" : "Travel time"} ${how} · ${bandLabel(state.band)}` : "Travel time";
+  $("#legend-title").textContent = meta ? `${to || profile ? "Average trip time" : "Travel time"} ${how} · ${bandLabel(state.band)}` : "Travel time";
   renderCoverage();
 }
 
@@ -907,7 +1037,7 @@ function cellAt(lng, lat) {
 function onHover(e) {
   const tip = $("#tooltip");
   const cell = cellAt(e.lngLat.lng, e.lngLat.lat);
-  const layers = ["mrt-stations", "bus-stops", "bus-routes"].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== "none");
+  const layers = ["profile-places", "mrt-stations", "bus-stops", "bus-routes"].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== "none");
   const box = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
   const feats = layers.length ? map.queryRenderedFeatures(box, { layers }) : [];
   if (!cell || cell.v === NO_DATA) { if (!feats.length) return hideHover(); }
@@ -915,9 +1045,10 @@ function onHover(e) {
   tip.replaceChildren();
   if (cell && cell.v !== NO_DATA) {
     const mins = (v) => (v >= UNREACHED ? `over ${meta.max_minutes}` : fmtMin(v / 10));
-    const several = state.dir === "to" && state.places.length > 1, weighted = placesWeighted();
+    const profile = state.dir === "profile";
+    const several = profile || (state.dir === "to" && state.places.length > 1), weighted = profile || placesWeighted();
     tip.append(el("strong", {}, `${cell.v === UNREACHED ? "Over " + meta.max_minutes : fmtMin(cell.v / 10)} min${several ? (weighted ? " weighted average" : " on average") : ""}`));
-    tip.append(el("span", { className: "k" }, `${state.mode === "car" ? "by car" : "by public transport"}, ${bandLabel(state.band)}`));
+    tip.append(el("span", { className: "k" }, `${profile ? `to key destinations (${currentProfile().name}), ` : ""}${state.mode === "car" ? "by car" : "by public transport"}, ${bandLabel(state.band)}`));
     if (state.dir === "to" && placeParts.length === state.places.length) {
       // each place's own trip time from here
       placeParts.forEach((part, k) => {
@@ -930,9 +1061,11 @@ function onHover(e) {
   } else {
     map.getSource("hover-cell").setData({ type: "FeatureCollection", features: [] });
   }
+  const place = feats.find((f) => f.layer.id === "profile-places");
   const station = feats.find((f) => f.layer.id === "mrt-stations");
   const stop = feats.find((f) => f.layer.id === "bus-stops");
   const services = [...new Set(feats.filter((f) => f.layer.id === "bus-routes").map((f) => f.properties.service))];
+  if (place) tip.append(el("div", {}, el("b", {}, place.properties.name), ` · ${place.properties.share}% of the profile`));
   if (station) tip.append(el("div", {}, `${station.properties.name} (${station.properties.codes})`));
   else if (stop) tip.append(el("div", {}, `Bus stop ${stop.properties.code} · ${stop.properties.name}`));
   if (services.length) {
@@ -946,7 +1079,7 @@ function onHover(e) {
   if (x + rect.width > innerWidth - 4) x = e.originalEvent.clientX - rect.width - pad;
   if (y + rect.height > innerHeight - 4) y = e.originalEvent.clientY - rect.height - pad;
   tip.style.left = `${x}px`; tip.style.top = `${y}px`;
-  map.getCanvas().style.cursor = station || stop ? "pointer" : "crosshair";
+  map.getCanvas().style.cursor = place || station || stop ? "pointer" : "crosshair";
 }
 
 function hideHover() {
@@ -1163,7 +1296,7 @@ function updateTables() {
     el("td", {}, `${m} min`),
     el("td", { className: "num" }, `${fmtKm2(within[k] * cellKm2)} km²`),
     el("td", { className: "num" }, fmtPct((100 * within[k]) / grid.land_cells)))));
-  const t = lastResult.timing_ms, n = state.places.length;
+  const t = lastResult.timing_ms, n = state.dir === "profile" ? currentProfile().places : state.places.length;
   $("#timing").textContent = t
     ? `Computed in ${t.search + t.grid} ms${t.cached ? " (reused search)" : ""} · ${grid.res_m} m grid`
     : `Weighted average of ${n} place${n === 1 ? "" : "s"} · ${grid.res_m} m grid`;
@@ -1183,9 +1316,10 @@ function updateTables() {
       ? [button("Trips", `Trips from ${p.name} to your places`, () => showTripsFrom({ lng: p.lon, lat: p.lat })),
         button("Add", `Add ${p.name} as a place`, () => addPlace({ lng: p.lon, lat: p.lat }))]
       : [button("Route", `Route to ${p.name}`, () => { state.dest = { lon: p.lon, lat: p.lat }; setDestMarker(); writeHash(); fetchRoute(); }),
-        button("Start", `Start from ${p.name}`, () => {
-          state.origin = { lon: p.lon, lat: p.lat }; setOriginMarker(); writeHash(); compute();
+        button("Start", state.dir === "profile" ? `Trips from ${p.name} to the key destinations` : `Start from ${p.name}`, () => {
+          moveOrigin({ lon: p.lon, lat: p.lat });
           map.easeTo({ center: [p.lon, p.lat] });
+          if (state.dir === "profile") showKeySection();
         })];
     return el("tr", {},
       el("td", {}, p.name),
@@ -1196,27 +1330,36 @@ function updateTables() {
 
 /* --- key destinations ------------------------------------------------------ */
 
+/** The key destinations: in "From one point", the start point's score in the legend card (a
+    way into the profile view); in "To a profile", the profile's places with the pin's trip to each. */
 function renderKeyDestinations() {
-  // every profile's summary comes with each result, so switching profile needs no new search
-  const k = lastResult && lastResult.key_destinations && lastResult.key_destinations[state.profile];
-  const show = !!(k && k.weighted_min !== null);
-  $("#key-section").hidden = !show;
-  $("#key-score").hidden = !show;
-  if (!show) return;
-  const profile = meta.key_destinations.find((q) => q.key === state.profile);
-  $("#key-profile-desc").textContent = profile.description;
+  const profile = meta && currentProfile();
+  if (!profile) { $("#key-score").hidden = true; return; }
+  // scores count only for the pin and settings they were computed for
+  const scores = spotScores && spotScoresKey === spotKey() ? spotScores[profile.key] : null;
+  const scored = !!(scores && scores.weighted_min !== null);
+  $("#key-score").hidden = !(state.dir === "from" && scored && grid);
   $("#key-score-profile").textContent = profile.name;
-  // weights are shown as shares, whatever scale the file uses
-  const total = k.groups.reduce((s, g) => s + g.weight, 0);
+  $("#key-score-value").textContent = scored ? `${fmtMin(scores.weighted_min)} min` : "";
+  if (state.dir !== "profile") return;
+
+  $("#key-profile-desc").textContent = profile.description;
+  $("#key-total").textContent = scored ? `${fmtMin(scores.weighted_min)} min` : "…";
+  $("#key-total-note").textContent = scored ? "weighted average from your spot (the pin)" : "working out your spot's trips";
+  // the server lists a profile's places in the same order in meta and in scores
+  const items = profile.items.map((d, i) => ({ ...d, minutes: scores ? scores.items[i].minutes : undefined }));
+  const total = items.reduce((s, d) => s + d.weight, 0);  // weights are shown as shares, whatever their scale
   const share = (w) => `${+((100 * w) / total).toFixed(1)}%`;
-  const mins = (m) => (m === null ? "—" : fmtMin(m));
-  $("#key-score-value").textContent = `${fmtMin(k.weighted_min)} min`;
-  $("#key-total").textContent = `${fmtMin(k.weighted_min)} min`;
-  $("#key-groups tbody").replaceChildren(...k.groups.map((g) => el("tr", {},
+  const mins = (m) => (m === undefined ? "…" : m === null ? "—" : fmtMin(m));
+  const groups = [...new Set(items.map((d) => d.group))].map((name) => ({
+    name, weight: items.filter((d) => d.group === name).reduce((s, d) => s + d.weight, 0),
+    minutes: scores ? scores.groups.find((g) => g.name === name).minutes : undefined,
+  }));
+  $("#key-groups tbody").replaceChildren(...groups.map((g) => el("tr", {},
     el("td", {}, g.name), el("td", { className: "num" }, share(g.weight)), el("td", { className: "num" }, mins(g.minutes)))));
-  const items = [...k.items].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name));
-  $("#key-items tbody").replaceChildren(...items.map((d) => {
-    const route = el("button", { type: "button", className: "link-btn", title: `Route to ${d.name}` }, "Route");
+  const sorted = [...items].sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name));
+  $("#key-items tbody").replaceChildren(...sorted.map((d) => {
+    const route = el("button", { type: "button", className: "link-btn", title: `Route from your spot to ${d.name}` }, "Route");
     route.addEventListener("click", () => { state.dest = { lon: d.lon, lat: d.lat }; setDestMarker(); writeHash(); fetchRoute(); });
     return el("tr", {},
       el("td", {}, d.name, el("small", {}, d.group)),
@@ -1224,16 +1367,17 @@ function renderKeyDestinations() {
       el("td", { className: d.minutes === null ? "num muted" : "num" }, mins(d.minutes)),
       el("td", { className: "actions" }, route));
   }));
-  $("#key-count").textContent = `All ${k.items.length} destinations`;
+  $("#key-count").textContent = `All ${items.length} destinations`;
   const unreached = $("#key-unreached");
-  unreached.hidden = !k.unreachable;
-  unreached.textContent = `${k.unreachable} of them can't be reached within ${meta.max_minutes} minutes, and count as ${meta.max_minutes}.`;
-  const skipped = profile.skipped;
-  $("#key-skipped").hidden = !skipped.length;
-  $("#key-skipped").textContent = `Skipped, as no station has this name and no coordinates were given: ${skipped.join(", ")}.`;
+  unreached.hidden = !(scores && scores.unreachable);
+  unreached.textContent = scores ? `${scores.unreachable} of them can't be reached from your spot within ${meta.max_minutes} minutes, and count as ${meta.max_minutes}.` : "";
+  $("#key-skipped").hidden = !profile.skipped.length;
+  $("#key-skipped").textContent = `Skipped, as no station has this name and no coordinates were given: ${profile.skipped.join(", ")}.`;
 }
 
+/** Open the profile view at the key destinations (from the legend card's score). */
 function showKeySection() {
+  setDir("profile");
   const panel = $("#panel");
   if (panel.classList.contains("collapsed")) $("#panel-toggle").click();
   $("#key-section").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1255,6 +1399,7 @@ function buildAbout() {
     el("li", {}, "Train waits come from each line's published peak and off-peak frequency (below): half the gap between trains on average, the longest gap at worst. Running times come from the official timetable, calibrated per line as the feed rounds them up to whole minutes. Interchange walks use the Reddit-measured timings, scaled by walking speed."),
     el("li", {}, "Getting between the street and a platform takes a time per station (below), scaled by walking speed: deeper stations take longer. Entrances well away from the platform add the extra walk."),
     el("li", {}, "Car: typical-congestion speeds by road class for the time band, with peaks calibrated to LTA's measured peak-hour averages (no live traffic). The start and end are joined to the road network on foot."),
+    el("li", {}, "Several places and profiles: one search backwards from each place gives every spot's time to it; the map is their weighted average. In a profile, a place that can't be reached within 3 hours counts as 3 hours, as in its score."),
     el("li", {}, "Limitations: no real-time data; boarding the first of several buses that go your way is not modelled (waits can be pessimistic at busy stops); cross-border and ferry services are excluded."),
   );
   box.append(el("h3", {}, "Data"), sources, el("h3", {}, "Model"), model);
